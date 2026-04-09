@@ -1,5 +1,7 @@
 package slack
 
+import "encoding/json"
+
 type Message struct {
 	Type        string       `json:"type"`
 	User        string       `json:"user"`
@@ -7,11 +9,38 @@ type Message struct {
 	TS          string       `json:"ts"`
 	ThreadTS    string       `json:"thread_ts,omitempty"`
 	ReplyCount  int          `json:"reply_count,omitempty"`
-	Channel     *Channel     `json:"channel,omitempty"`
+	Channel     *MessageRef  `json:"channel,omitempty"`
 	Permalink   string       `json:"permalink,omitempty"`
 	Files       []File       `json:"files,omitempty"`
 	Attachments []Attachment `json:"attachments,omitempty"`
 	Blocks      []Block      `json:"blocks,omitempty"`
+}
+
+type MessageRef struct {
+	ID   string `json:"id,omitempty"`
+	Name string `json:"name,omitempty"`
+}
+
+func (m *MessageRef) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		*m = MessageRef{}
+		return nil
+	}
+
+	var id string
+	if err := json.Unmarshal(data, &id); err == nil {
+		*m = MessageRef{ID: id}
+		return nil
+	}
+
+	type alias MessageRef
+	var ref alias
+	if err := json.Unmarshal(data, &ref); err != nil {
+		return err
+	}
+
+	*m = MessageRef(ref)
+	return nil
 }
 
 type File struct {
