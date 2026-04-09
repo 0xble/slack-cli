@@ -2,7 +2,10 @@
 /slack-cli
 *.exe
 /dist/
-/bin/
+/bin/*
+!/bin/
+!/bin/upgrade
+!/bin/smoke
 
 # IDE
 .idea/
