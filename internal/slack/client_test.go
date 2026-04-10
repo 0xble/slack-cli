@@ -4,6 +4,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 )
@@ -147,6 +148,113 @@ func TestDownloadPrivateFile_AuthorizationHeaderPolicy(t *testing.T) {
 				t.Fatalf("DownloadPrivateFile() authorization header = %q, want %q", gotAuth, tt.wantAuth)
 			}
 		})
+	}
+}
+
+func TestOpenConversation_UsesPOSTFormEncoding(t *testing.T) {
+	client := &Client{
+		userToken: "xoxp-test-token",
+		httpClient: &http.Client{
+			Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				if req.Method != http.MethodPost {
+					t.Fatalf("expected POST, got %s", req.Method)
+				}
+				if req.URL.Path != "/api/conversations.open" {
+					t.Fatalf("expected /api/conversations.open, got %s", req.URL.Path)
+				}
+				if got := req.Header.Get("Authorization"); got != "Bearer xoxp-test-token" {
+					t.Fatalf("unexpected Authorization header %q", got)
+				}
+
+				body, err := io.ReadAll(req.Body)
+				if err != nil {
+					t.Fatalf("failed to read request body: %v", err)
+				}
+				values, err := url.ParseQuery(string(body))
+				if err != nil {
+					t.Fatalf("failed to parse request body: %v", err)
+				}
+				if values.Get("users") != "U123" {
+					t.Fatalf("expected users=U123, got %q", values.Get("users"))
+				}
+				if values.Get("return_im") != "true" {
+					t.Fatalf("expected return_im=true, got %q", values.Get("return_im"))
+				}
+
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Status:     "200 OK",
+					Header:     http.Header{"Content-Type": []string{"application/json"}},
+					Body: io.NopCloser(strings.NewReader(
+						`{"ok":true,"channel":{"id":"D123","user":"U123","is_im":true}}`,
+					)),
+					Request: req,
+				}, nil
+			}),
+		},
+	}
+
+	resp, err := client.OpenConversation([]string{"U123"}, true)
+	if err != nil {
+		t.Fatalf("OpenConversation returned error: %v", err)
+	}
+	if resp.Channel.ID != "D123" {
+		t.Fatalf("expected channel D123, got %q", resp.Channel.ID)
+	}
+}
+
+func TestPostMessage_UsesPOSTFormEncoding(t *testing.T) {
+	client := &Client{
+		userToken: "xoxp-test-token",
+		httpClient: &http.Client{
+			Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				if req.Method != http.MethodPost {
+					t.Fatalf("expected POST, got %s", req.Method)
+				}
+				if req.URL.Path != "/api/chat.postMessage" {
+					t.Fatalf("expected /api/chat.postMessage, got %s", req.URL.Path)
+				}
+
+				body, err := io.ReadAll(req.Body)
+				if err != nil {
+					t.Fatalf("failed to read request body: %v", err)
+				}
+				values, err := url.ParseQuery(string(body))
+				if err != nil {
+					t.Fatalf("failed to parse request body: %v", err)
+				}
+				if values.Get("channel") != "D123" {
+					t.Fatalf("expected channel=D123, got %q", values.Get("channel"))
+				}
+				if values.Get("text") != "hello" {
+					t.Fatalf("expected text=hello, got %q", values.Get("text"))
+				}
+				if values.Get("thread_ts") != "123.456" {
+					t.Fatalf("expected thread_ts=123.456, got %q", values.Get("thread_ts"))
+				}
+				if values.Get("mrkdwn") != "false" {
+					t.Fatalf("expected mrkdwn=false, got %q", values.Get("mrkdwn"))
+				}
+
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Status:     "200 OK",
+					Header:     http.Header{"Content-Type": []string{"application/json"}},
+					Body: io.NopCloser(strings.NewReader(
+						`{"ok":true,"channel":"D123","ts":"1775772298.509159","message":{"text":"hello","ts":"1775772298.509159"}}`,
+					)),
+					Request: req,
+				}, nil
+			}),
+		},
+	}
+
+	resp, err := client.PostMessage("D123", "hello", "123.456", false)
+	if err != nil {
+		t.Fatalf("PostMessage returned error: %v", err)
+	}
+	if resp.Channel != "D123" || resp.TS != "1775772298.509159" {
+		t.Fatalf("unexpected response: %+v", resp)
 	}
 }
 

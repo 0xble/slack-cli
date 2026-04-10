@@ -2,6 +2,7 @@ package slack
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -17,6 +18,20 @@ type Client struct {
 	httpClient *http.Client
 }
 
+type APIError struct {
+	Method string
+	Code   string
+}
+
+func (e *APIError) Error() string {
+	return "slack API error: " + e.Code
+}
+
+func IsAPIError(err error, code string) bool {
+	var apiErr *APIError
+	return errors.As(err, &apiErr) && apiErr.Code == code
+}
+
 func NewClient(userToken string) *Client {
 	return &Client{
 		userToken: userToken,
@@ -26,8 +41,39 @@ func NewClient(userToken string) *Client {
 	}
 }
 
+func NewClientWithHTTPClient(userToken string, httpClient *http.Client) *Client {
+	client := NewClient(userToken)
+	if httpClient != nil {
+		client.httpClient = httpClient
+	}
+	return client
+}
+
 func (c *Client) request(method string, params url.Values) ([]byte, error) {
-	req, err := http.NewRequest("GET", slackAPIBase+"/"+method+"?"+params.Encode(), nil)
+	return c.requestWithMethod(http.MethodGet, method, params)
+}
+
+func (c *Client) requestPost(method string, params url.Values) ([]byte, error) {
+	return c.requestWithMethod(http.MethodPost, method, params)
+}
+
+func (c *Client) requestWithMethod(httpMethod, method string, params url.Values) ([]byte, error) {
+	requestURL := slackAPIBase + "/" + method
+
+	var bodyReader io.Reader
+	if params == nil {
+		params = url.Values{}
+	}
+
+	if httpMethod == http.MethodGet && len(params) > 0 {
+		requestURL += "?" + params.Encode()
+	}
+
+	if httpMethod == http.MethodPost {
+		bodyReader = strings.NewReader(params.Encode())
+	}
+
+	req, err := http.NewRequest(httpMethod, requestURL, bodyReader)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -59,7 +105,7 @@ func (c *Client) request(method string, params url.Values) ([]byte, error) {
 	}
 
 	if !slackResp.OK {
-		return nil, fmt.Errorf("slack API error: %s", slackResp.Error)
+		return nil, &APIError{Method: method, Code: slackResp.Error}
 	}
 
 	return body, nil
@@ -290,6 +336,52 @@ func (c *Client) ListUsers(limit int) (*UsersResponse, error) {
 	var result UsersResponse
 	if err := json.Unmarshal(body, &result); err != nil {
 		return nil, fmt.Errorf("failed to parse users response: %w", err)
+	}
+
+	return &result, nil
+}
+
+func (c *Client) OpenConversation(users []string, returnIM bool) (*OpenConversationResponse, error) {
+	params := url.Values{}
+	if len(users) > 0 {
+		params.Set("users", strings.Join(users, ","))
+	}
+	if returnIM {
+		params.Set("return_im", "true")
+	}
+
+	body, err := c.requestPost("conversations.open", params)
+	if err != nil {
+		return nil, err
+	}
+
+	var result OpenConversationResponse
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("failed to parse conversations.open response: %w", err)
+	}
+
+	return &result, nil
+}
+
+func (c *Client) PostMessage(channelID, text, threadTS string, mrkdwn bool) (*PostMessageResponse, error) {
+	params := url.Values{}
+	params.Set("channel", channelID)
+	params.Set("text", text)
+	if threadTS != "" {
+		params.Set("thread_ts", threadTS)
+	}
+	if !mrkdwn {
+		params.Set("mrkdwn", "false")
+	}
+
+	body, err := c.requestPost("chat.postMessage", params)
+	if err != nil {
+		return nil, err
+	}
+
+	var result PostMessageResponse
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("failed to parse chat.postMessage response: %w", err)
 	}
 
 	return &result, nil

@@ -8,6 +8,7 @@ oauth_config:
     - http://localhost:8338/callback
   scopes:
     user:
+      - chat:write
       - channels:history
       - channels:read
       - groups:history
@@ -15,6 +16,7 @@ oauth_config:
       - files:read
       - im:history
       - im:read
+      - im:write
       - mpim:history
       - mpim:read
       - search:read

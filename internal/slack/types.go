@@ -115,6 +115,8 @@ type Channel struct {
 	IsGroup    bool   `json:"is_group"`
 	IsIM       bool   `json:"is_im"`
 	IsMPIM     bool   `json:"is_mpim"`
+	User       string `json:"user,omitempty"`
+	IsOpen     bool   `json:"is_open,omitempty"`
 	IsPrivate  bool   `json:"is_private"`
 	IsArchived bool   `json:"is_archived"`
 	NumMembers int    `json:"num_members"`
@@ -129,6 +131,20 @@ type Topic struct {
 type ConversationsResponse struct {
 	OK       bool      `json:"ok"`
 	Channels []Channel `json:"channels"`
+}
+
+type OpenConversationResponse struct {
+	OK          bool    `json:"ok"`
+	AlreadyOpen bool    `json:"already_open,omitempty"`
+	NoOp        bool    `json:"no_op,omitempty"`
+	Channel     Channel `json:"channel"`
+}
+
+type PostMessageResponse struct {
+	OK      bool    `json:"ok"`
+	Channel string  `json:"channel"`
+	TS      string  `json:"ts"`
+	Message Message `json:"message"`
 }
 
 type SearchResponse struct {

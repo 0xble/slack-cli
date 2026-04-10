@@ -1,6 +1,6 @@
 # slack-cli
 
-A CLI for Slack - search, read channels/threads, and browse users from the command line.
+A CLI for Slack - search messages, read channels/threads, browse users, and work with DMs from the command line.
 
 ## Installation
 
@@ -102,6 +102,14 @@ slack-cli channel read <url> --markdown # Read by URL as markdown
 slack-cli channel info #general         # Show channel details
 ```
 
+### Direct messages
+
+```bash
+slack-cli dm list                 # List direct messages
+slack-cli dm read @alice          # Read a direct message
+slack-cli dm send @alice "hello"  # Send a direct message
+```
+
 ### Search
 
 ```bash
@@ -164,6 +172,7 @@ This enables agents to use the CLI when asked to view Slack URLs, search message
 
 The included manifest requests these user token scopes:
 
+- `chat:write` - Send messages
 - `channels:history` - Read public channel messages
 - `channels:read` - List public channels
 - `files:read` - Read file metadata and download private file/image URLs
@@ -171,11 +180,14 @@ The included manifest requests these user token scopes:
 - `groups:read` - List private channels
 - `im:history` - Read direct message history
 - `im:read` - Access direct message metadata
+- `im:write` - Open or resume direct messages
 - `mpim:history` - Read multi-party direct message history
 - `mpim:read` - Access multi-party direct message metadata
 - `search:read` - Search messages
 - `users:read` - List users
 - `users:read.email` - Lookup users by email
+
+If you add new scopes to an existing Slack app, rerun `slack-cli auth login` for each affected workspace so the stored token picks up the updated grants.
 
 ## License
 
