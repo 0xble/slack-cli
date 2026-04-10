@@ -2,8 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"io"
-	"os"
 	"strings"
 
 	"github.com/lox/slack-cli/internal/slack"
@@ -12,7 +10,6 @@ import (
 type DMCmd struct {
 	List DmListCmd `cmd:"" aliases:"ls" help:"List direct messages"`
 	Read DmReadCmd `cmd:"" aliases:"history,h" help:"Read direct message history"`
-	Send DmSendCmd `cmd:"" help:"Send a direct message"`
 }
 
 type DmListCmd struct {
@@ -74,69 +71,6 @@ func (c *DmReadCmd) Run(ctx *Context) error {
 	return nil
 }
 
-type DmSendCmd struct {
-	Recipient string `arg:"" help:"Recipient @username, user ID, or DM ID"`
-	Text      string `arg:"" optional:"" help:"Message text"`
-	Stdin     bool   `help:"Read message text from stdin"`
-	Thread    string `help:"Reply in a thread"`
-	Mrkdwn    bool   `help:"Send text as Slack mrkdwn"`
-}
-
-func (c *DmSendCmd) Run(ctx *Context) error {
-	client, err := ctx.NewClient("")
-	if err != nil {
-		return err
-	}
-
-	text, err := c.messageText()
-	if err != nil {
-		return err
-	}
-
-	target, err := slack.ResolveDMTarget(client, c.Recipient)
-	if err != nil {
-		if slack.IsAPIError(err, "missing_scope") {
-			return fmt.Errorf("%w. Update the Slack app scopes and rerun 'slack-cli auth login' for that workspace", err)
-		}
-		return err
-	}
-
-	resp, err := client.PostMessage(target.ChannelID, text, c.Thread, c.Mrkdwn)
-	if err != nil {
-		if slack.IsAPIError(err, "missing_scope") {
-			return fmt.Errorf("%w. Update the Slack app scopes to include chat:write and im:write, then rerun 'slack-cli auth login' for that workspace", err)
-		}
-		return fmt.Errorf("failed to send DM: %w", err)
-	}
-
-	fmt.Printf("Sent DM to %s (%s) at %s\n", formatDMTargetLabel(target), resp.Channel, resp.TS)
-	return nil
-}
-
-func (c *DmSendCmd) messageText() (string, error) {
-	if c.Stdin && c.Text != "" {
-		return "", fmt.Errorf("cannot use both message text argument and --stdin")
-	}
-
-	if c.Stdin {
-		body, err := io.ReadAll(os.Stdin)
-		if err != nil {
-			return "", fmt.Errorf("failed to read stdin: %w", err)
-		}
-		text := string(body)
-		if strings.TrimSpace(text) == "" {
-			return "", fmt.Errorf("message text is required")
-		}
-		return text, nil
-	}
-
-	if strings.TrimSpace(c.Text) == "" {
-		return "", fmt.Errorf("message text is required")
-	}
-
-	return c.Text, nil
-}
-
 func formatMessagesAsMarkdown(messages []slack.Message, resolver *slack.Resolver) string {
 	var sb strings.Builder
 
@@ -181,20 +115,4 @@ func formatDMConversationLabel(client *slack.Client, ch slack.Channel) string {
 		return fmt.Sprintf("%s (%s)", realName, ch.ID)
 	}
 	return fmt.Sprintf("%s (%s)", ch.User, ch.ID)
-}
-
-func formatDMTargetLabel(target *slack.DMTarget) string {
-	if target == nil {
-		return "recipient"
-	}
-	if target.User != nil && strings.TrimSpace(target.User.Name) != "" {
-		return "@" + strings.TrimSpace(target.User.Name)
-	}
-	if target.UserID != "" {
-		return target.UserID
-	}
-	if target.ChannelID != "" {
-		return target.ChannelID
-	}
-	return target.Recipient
 }

@@ -6,7 +6,7 @@ allowed-tools: Bash(slack-cli:*)
 
 # Slack CLI
 
-A CLI for reading Slack content plus basic direct message workflows.
+A CLI for reading Slack content plus basic message send workflows.
 
 ## Installation
 
@@ -30,7 +30,7 @@ slack-cli channel read        # Read recent messages from a channel name, ID, or
 slack-cli channel info        # Show channel information by name, ID, or URL
 slack-cli dm list             # List direct messages
 slack-cli dm read             # Read a direct message by @username, user ID, or DM ID
-slack-cli dm send             # Send a direct message
+slack-cli message send        # Send a message to a channel or direct message
 slack-cli thread read         # Read a thread by URL or channel+timestamp (supports --markdown)
 slack-cli user list           # List users in the workspace
 slack-cli user info           # Show user information
@@ -64,7 +64,7 @@ slack-cli channel read "https://workspace.slack.com/archives/C123" --markdown
 
 ```bash
 slack-cli dm read @username
-slack-cli dm send @username "hello"
+slack-cli message send @username "hello"
 ```
 
 ## Discovering Options

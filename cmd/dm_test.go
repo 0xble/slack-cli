@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
-	"os"
 	"strings"
 	"testing"
 
@@ -70,111 +68,6 @@ func TestDmReadRun(t *testing.T) {
 	}
 }
 
-func TestDmSendRun(t *testing.T) {
-	ctx := testDMContext(func(req *http.Request) (*http.Response, error) {
-		switch req.URL.Path {
-		case "/api/users.list":
-			return dmJSONResponse(req, `{"ok":true,"members":[{"id":"U123","name":"alice","real_name":"Alice"}]}`)
-		case "/api/conversations.open":
-			body, err := io.ReadAll(req.Body)
-			if err != nil {
-				t.Fatalf("failed to read request body: %v", err)
-			}
-			values, err := url.ParseQuery(string(body))
-			if err != nil {
-				t.Fatalf("failed to parse request body: %v", err)
-			}
-			if values.Get("users") != "U123" {
-				t.Fatalf("expected users=U123, got %q", values.Get("users"))
-			}
-			return dmJSONResponse(req, `{"ok":true,"channel":{"id":"D123","user":"U123","is_im":true}}`)
-		case "/api/chat.postMessage":
-			body, err := io.ReadAll(req.Body)
-			if err != nil {
-				t.Fatalf("failed to read request body: %v", err)
-			}
-			values, err := url.ParseQuery(string(body))
-			if err != nil {
-				t.Fatalf("failed to parse request body: %v", err)
-			}
-			if values.Get("channel") != "D123" {
-				t.Fatalf("expected channel D123, got %q", values.Get("channel"))
-			}
-			if values.Get("text") != "hello" {
-				t.Fatalf("expected text hello, got %q", values.Get("text"))
-			}
-			return dmJSONResponse(req, `{"ok":true,"channel":"D123","ts":"1775772298.509159","message":{"text":"hello","ts":"1775772298.509159"}}`)
-		default:
-			return nil, fmt.Errorf("unexpected path %s", req.URL.Path)
-		}
-	})
-
-	output := captureStdout(t, func() {
-		if err := (&DmSendCmd{Recipient: "@alice", Text: "hello"}).Run(ctx); err != nil {
-			t.Fatalf("DmSendCmd.Run returned error: %v", err)
-		}
-	})
-
-	if !strings.Contains(output, "Sent DM to @alice (D123) at 1775772298.509159") {
-		t.Fatalf("unexpected output: %q", output)
-	}
-}
-
-func TestDmSendMissingScopeHint(t *testing.T) {
-	ctx := testDMContext(func(req *http.Request) (*http.Response, error) {
-		switch req.URL.Path {
-		case "/api/chat.postMessage":
-			return dmJSONResponse(req, `{"ok":false,"error":"missing_scope"}`)
-		default:
-			return nil, fmt.Errorf("unexpected path %s", req.URL.Path)
-		}
-	})
-
-	err := (&DmSendCmd{Recipient: "D123", Text: "hello"}).Run(ctx)
-	if err == nil {
-		t.Fatalf("expected error")
-	}
-	if !strings.Contains(err.Error(), "chat:write and im:write") {
-		t.Fatalf("expected missing scope guidance, got %v", err)
-	}
-}
-
-func TestDmSendMessageText(t *testing.T) {
-	t.Run("rejects empty text", func(t *testing.T) {
-		_, err := (&DmSendCmd{}).messageText()
-		if err == nil {
-			t.Fatalf("expected error")
-		}
-	})
-
-	t.Run("reads stdin", func(t *testing.T) {
-		originalStdin := os.Stdin
-		reader, writer, err := os.Pipe()
-		if err != nil {
-			t.Fatalf("os.Pipe returned error: %v", err)
-		}
-		os.Stdin = reader
-		defer func() {
-			os.Stdin = originalStdin
-		}()
-
-		if _, err := writer.WriteString("hello from stdin"); err != nil {
-			t.Fatalf("writer.WriteString returned error: %v", err)
-		}
-		if err := writer.Close(); err != nil {
-			t.Fatalf("writer.Close returned error: %v", err)
-		}
-
-		text, err := (&DmSendCmd{Stdin: true}).messageText()
-		if err != nil {
-			t.Fatalf("messageText returned error: %v", err)
-		}
-		if text != "hello from stdin" {
-			t.Fatalf("messageText = %q, want %q", text, "hello from stdin")
-		}
-	})
-}
-
 func TestDMCommandAliasesParse(t *testing.T) {
 	cli := &CLI{}
 	parser, err := kong.New(cli, kong.Vars{"version": "test"})
@@ -190,6 +83,9 @@ func TestDMCommandAliasesParse(t *testing.T) {
 	}
 	if _, err := parser.Parse([]string{"dm", "h", "D123"}); err != nil {
 		t.Fatalf("expected dm h to parse, got %v", err)
+	}
+	if _, err := parser.Parse([]string{"dm", "send", "D123", "hello"}); err == nil {
+		t.Fatalf("expected dm send parse to fail")
 	}
 }
 

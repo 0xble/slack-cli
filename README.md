@@ -1,6 +1,6 @@
 # slack-cli
 
-A CLI for Slack - search messages, read channels/threads, browse users, and work with DMs from the command line.
+A CLI for Slack - search messages, read channels and threads, browse users, and send messages from the command line.
 
 ## Installation
 
@@ -107,7 +107,13 @@ slack-cli channel info #general         # Show channel details
 ```bash
 slack-cli dm list                 # List direct messages
 slack-cli dm read @alice          # Read a direct message
-slack-cli dm send @alice "hello"  # Send a direct message
+```
+
+### Messages
+
+```bash
+slack-cli message send @alice "hello"    # Send a direct message
+slack-cli message send #general "hello"  # Send to a channel
 ```
 
 ### Search
