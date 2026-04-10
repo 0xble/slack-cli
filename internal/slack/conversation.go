@@ -6,20 +6,24 @@ import (
 )
 
 // ConversationTarget is a resolved Slack conversation ready for use as a
-// destination (upload, message send, etc). Name is populated for real
-// channels; Username is populated for DMs.
+// destination (upload, message send, etc).
 type ConversationTarget struct {
-	ChannelID string
-	Name      string
-	Username  string
-	IsDM      bool
-	IsPrivate bool
+	Recipient   string
+	ChannelID   string
+	Name        string
+	Username    string
+	IsDM        bool
+	IsPrivate   bool
+	ChannelName string
+	Type        string
+	UserID      string
+	User        *User
+	Channel     *Channel
 }
 
-// ResolveConversationTarget accepts the common recipient forms (channel ID,
-// DM ID, user ID, @handle, #channel-name, or bare channel name) and returns
-// a ConversationTarget whose ChannelID can be used as the Slack conversation
-// destination. For @handle and user ID inputs it opens a DM channel.
+// ResolveConversationTarget accepts common recipient forms (channel ID, DM ID,
+// user ID, @handle, #channel-name, or bare channel name) and returns a target
+// whose ChannelID can be used as the Slack conversation destination.
 func ResolveConversationTarget(client *Client, recipient string) (*ConversationTarget, error) {
 	trimmed := strings.TrimSpace(recipient)
 	if trimmed == "" {
@@ -28,30 +32,30 @@ func ResolveConversationTarget(client *Client, recipient string) (*ConversationT
 
 	switch {
 	case strings.HasPrefix(trimmed, "D"):
-		return &ConversationTarget{ChannelID: trimmed, IsDM: true}, nil
+		return &ConversationTarget{
+			Recipient: trimmed,
+			ChannelID: trimmed,
+			IsDM:      true,
+			Type:      "dm",
+		}, nil
 	case isSlackUserID(trimmed):
 		user, err := client.GetUserInfo(trimmed)
 		if err != nil {
 			return nil, err
 		}
-		return openDMTarget(client, user)
+		return openConversationDMTarget(client, user, trimmed)
 	case strings.HasPrefix(trimmed, "@"):
 		user, err := findUserByUsername(client, trimmed)
 		if err != nil {
 			return nil, err
 		}
-		return openDMTarget(client, user)
+		return openConversationDMTarget(client, user, trimmed)
 	case strings.HasPrefix(trimmed, "C") || strings.HasPrefix(trimmed, "G"):
-		info, err := client.GetConversationInfo(trimmed)
+		channel, err := client.GetConversationInfo(trimmed)
 		if err != nil {
 			return nil, err
 		}
-		name := strings.TrimSpace(info.Name)
-		return &ConversationTarget{
-			ChannelID: trimmed,
-			Name:      name,
-			IsPrivate: info.IsPrivate,
-		}, nil
+		return targetFromChannel(trimmed, channel), nil
 	default:
 		return resolveChannelTargetByName(client, trimmed)
 	}
@@ -61,46 +65,89 @@ func isSlackUserID(id string) bool {
 	return strings.HasPrefix(id, "U") || strings.HasPrefix(id, "W")
 }
 
-func openDMTarget(client *Client, user *User) (*ConversationTarget, error) {
+func openConversationDMTarget(client *Client, user *User, recipient string) (*ConversationTarget, error) {
 	resp, err := client.OpenConversation([]string{user.ID}, true)
 	if err != nil {
 		return nil, err
 	}
+
 	return &ConversationTarget{
+		Recipient: recipient,
 		ChannelID: resp.Channel.ID,
 		Username:  user.Name,
 		IsDM:      true,
+		Type:      "dm",
+		UserID:    user.ID,
+		User:      user,
 	}, nil
 }
 
-// resolveChannelTargetByName walks conversations.list with cursor
-// pagination until it finds a channel whose name matches recipient.
 func resolveChannelTargetByName(client *Client, recipient string) (*ConversationTarget, error) {
-	channelName := strings.TrimPrefix(strings.TrimSpace(recipient), "#")
+	channelName, isChannelLike, err := parseChannelRecipient(recipient)
+	if err != nil {
+		return nil, err
+	}
+	if !isChannelLike {
+		return nil, fmt.Errorf("recipient %q is not a channel", recipient)
+	}
 
 	cursor := ""
 	for {
-		channels, err := client.ListConversationsPage("public_channel,private_channel", 1000, cursor)
+		resp, err := client.ListConversationsPage("public_channel,private_channel", 1000, cursor)
 		if err != nil {
 			return nil, fmt.Errorf("failed to list channels: %w", err)
 		}
 
-		for _, channel := range channels.Channels {
-			if channel.Name != channelName {
-				continue
+		for i := range resp.Channels {
+			channel := &resp.Channels[i]
+			if channel.Name == channelName {
+				return targetFromChannel(recipient, channel), nil
 			}
-			return &ConversationTarget{
-				ChannelID: channel.ID,
-				Name:      channel.Name,
-				IsPrivate: channel.IsPrivate,
-			}, nil
 		}
 
-		cursor = strings.TrimSpace(channels.ResponseMetadata.NextCursor)
+		cursor = strings.TrimSpace(resp.ResponseMetadata.NextCursor)
 		if cursor == "" {
 			break
 		}
 	}
 
 	return nil, &APIError{Method: "conversations.resolve", Code: "channel_not_found"}
+}
+
+func targetFromChannel(recipient string, channel *Channel) *ConversationTarget {
+	targetType := "channel"
+	if channel.IsPrivate || channel.IsGroup {
+		targetType = "group"
+	}
+
+	return &ConversationTarget{
+		Recipient:   recipient,
+		ChannelID:   channel.ID,
+		Name:        channel.Name,
+		IsPrivate:   channel.IsPrivate,
+		ChannelName: channel.Name,
+		Type:        targetType,
+		Channel:     channel,
+	}
+}
+
+func parseChannelRecipient(recipient string) (channelName string, isChannelLike bool, err error) {
+	trimmed := strings.TrimSpace(recipient)
+	if trimmed == "" {
+		return "", false, fmt.Errorf("recipient is required")
+	}
+
+	if strings.HasPrefix(trimmed, "#") {
+		return strings.TrimPrefix(trimmed, "#"), true, nil
+	}
+
+	if strings.HasPrefix(trimmed, "@") || strings.HasPrefix(trimmed, "U") || strings.HasPrefix(trimmed, "W") || strings.HasPrefix(trimmed, "D") {
+		return "", false, nil
+	}
+
+	if strings.HasPrefix(trimmed, "C") || strings.HasPrefix(trimmed, "G") {
+		return "", false, nil
+	}
+
+	return trimmed, true, nil
 }
