@@ -1,12 +1,12 @@
 ---
 name: slack
-description: Read Slack messages, threads, channels, users, and files via CLI. Use when asked to view Slack URLs, search Slack, look up users, or work with Slack files.
+description: Read Slack messages, threads, channels, users, files, and direct messages via CLI. Use when asked to view Slack URLs, search Slack, look up users, work with Slack files, or read/send DMs.
 allowed-tools: Bash(slack-cli:*)
 ---
 
 # Slack CLI
 
-A CLI for reading Slack content, searching messages, browsing users, and working with files.
+A CLI for reading Slack content, searching messages, browsing users, working with files, and basic direct message workflows.
 
 ## Installation
 
@@ -28,6 +28,9 @@ slack-cli search <query>      # Search messages
 slack-cli channel list        # List channels you're a member of
 slack-cli channel read        # Read recent messages from a channel name, ID, or URL
 slack-cli channel info        # Show channel information by name, ID, or URL
+slack-cli dm list             # List direct messages
+slack-cli dm read             # Read a direct message by @username, user ID, or DM ID
+slack-cli dm send             # Send a direct message
 slack-cli file list           # List recent files
 slack-cli file info           # Show file metadata
 slack-cli file download       # Download a file by ID

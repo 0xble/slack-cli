@@ -87,6 +87,7 @@ type CLI struct {
 	View      ViewCmd    `cmd:"" help:"View any Slack URL (message, thread, or channel)"`
 	Channel   ChannelCmd `cmd:"" help:"Channel commands"`
 	File      FileCmd    `cmd:"" help:"File commands"`
+	DM        DMCmd      `cmd:"" name:"dm" help:"Direct message commands"`
 	Search    SearchCmd  `cmd:"" help:"Search messages"`
 	Thread    ThreadCmd  `cmd:"" help:"Thread commands"`
 	User      UserCmd    `cmd:"" help:"User commands"`

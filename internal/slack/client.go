@@ -472,6 +472,30 @@ func (c *Client) OpenConversation(users []string, returnIM bool) (*OpenConversat
 	return &result, nil
 }
 
+func (c *Client) PostMessage(channelID, text, threadTS string, mrkdwn bool) (*PostMessageResponse, error) {
+	params := url.Values{}
+	params.Set("channel", channelID)
+	params.Set("text", text)
+	if threadTS != "" {
+		params.Set("thread_ts", threadTS)
+	}
+	if !mrkdwn {
+		params.Set("mrkdwn", "false")
+	}
+
+	body, err := c.requestPost("chat.postMessage", params)
+	if err != nil {
+		return nil, err
+	}
+
+	var result PostMessageResponse
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("failed to parse chat.postMessage response: %w", err)
+	}
+
+	return &result, nil
+}
+
 func (c *Client) GetUploadURLExternal(filename string, length int64) (*GetUploadURLExternalResponse, error) {
 	params := url.Values{}
 	params.Set("filename", filename)

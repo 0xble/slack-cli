@@ -162,6 +162,13 @@ type OpenConversationResponse struct {
 	Channel     Channel `json:"channel"`
 }
 
+type PostMessageResponse struct {
+	OK      bool    `json:"ok"`
+	Channel string  `json:"channel"`
+	TS      string  `json:"ts"`
+	Message Message `json:"message"`
+}
+
 type SearchResponse struct {
 	OK       bool `json:"ok"`
 	Messages struct {

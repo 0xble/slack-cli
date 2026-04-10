@@ -102,6 +102,14 @@ slack-cli channel read <url> --markdown # Read by URL as markdown
 slack-cli channel info "#general"       # Show channel details
 ```
 
+### Direct messages
+
+```bash
+slack-cli dm list                 # List direct messages
+slack-cli dm read @alice          # Read a direct message
+slack-cli dm send @alice "hello"  # Send a direct message
+```
+
 ### Files
 
 ```bash
@@ -225,7 +233,7 @@ The included manifest requests these user token scopes:
 - `groups:read` - List private channels
 - `im:history` - Read direct message history
 - `im:read` - Access direct message metadata
-- `im:write` - Open direct messages for DM-targeted file uploads
+- `im:write` - Open or resume direct messages and DM-targeted file uploads
 - `mpim:history` - Read multi-party direct message history
 - `mpim:read` - Access multi-party direct message metadata
 - `search:read` - Search messages
