@@ -3,12 +3,9 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BIN_PATH="${SLACK_CLI_INSTALL_PATH:-$HOME/.local/bin/slack-cli}"
+VERSION="$("$REPO_ROOT/bin/version")"
 
 mkdir -p "$(dirname "$BIN_PATH")"
-
-BASE_VERSION="$(git -C "$REPO_ROOT" describe --tags --abbrev=0 2>/dev/null || echo "dev")"
-FORK_VERSION_SUFFIX="${SLACK_CLI_FORK_VERSION_SUFFIX:-0xble.0.1.0}"
-VERSION="${BASE_VERSION}-${FORK_VERSION_SUFFIX}"
 
 go -C "$REPO_ROOT" build -ldflags "-X main.version=$VERSION" -o "$BIN_PATH" .
 
