@@ -80,18 +80,11 @@ func (c *FileDownloadCmd) Run(ctx *Context) error {
 		return fmt.Errorf("file %s has no downloadable URL", c.FileID)
 	}
 
-	maxBytes := downloadLimitForFile(file)
-
-	body, _, err := client.DownloadPrivateFile(fileURL, maxBytes)
-	if err != nil {
-		return fmt.Errorf("failed to download file: %w", err)
-	}
-
 	outputPath, err := resolveDownloadPath(c.Output, file.Name, file.ID)
 	if err != nil {
 		return err
 	}
-	if err := writeFileExclusive(outputPath, body); err != nil {
+	if err := streamDownloadedFile(client, fileURL, outputPath); err != nil {
 		return err
 	}
 
@@ -219,16 +212,25 @@ func resolveFileUploadTarget(client *slack.Client, recipient string) (*fileUploa
 }
 
 func lookupUploadUserByHandle(client *slack.Client, handle string) (*slack.User, error) {
-	users, err := client.ListUsers(1000)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list users: %w", err)
-	}
-
 	needle := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(handle)), "@")
-	for _, user := range users.Members {
-		if strings.ToLower(strings.TrimSpace(user.Name)) == needle {
-			matched := user
-			return &matched, nil
+
+	cursor := ""
+	for {
+		users, err := client.ListUsersPage(1000, cursor)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list users: %w", err)
+		}
+
+		for _, user := range users.Members {
+			if strings.ToLower(strings.TrimSpace(user.Name)) == needle {
+				matched := user
+				return &matched, nil
+			}
+		}
+
+		cursor = strings.TrimSpace(users.ResponseMetadata.NextCursor)
+		if cursor == "" {
+			break
 		}
 	}
 
@@ -264,19 +266,28 @@ func formatUploadChannelLabel(channel *slack.Channel, fallback string) string {
 
 func resolveChannelUploadTargetByName(client *slack.Client, recipient string) (*fileUploadTarget, error) {
 	channelName := strings.TrimPrefix(strings.TrimSpace(recipient), "#")
-	channels, err := client.ListConversations("public_channel,private_channel", 1000)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list channels: %w", err)
-	}
 
-	for _, channel := range channels.Channels {
-		if channel.Name != channelName {
-			continue
+	cursor := ""
+	for {
+		channels, err := client.ListConversationsPage("public_channel,private_channel", 1000, cursor)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list channels: %w", err)
 		}
-		return &fileUploadTarget{
-			ChannelID: channel.ID,
-			Label:     formatUploadChannelLabel(&channel, recipient),
-		}, nil
+
+		for _, channel := range channels.Channels {
+			if channel.Name != channelName {
+				continue
+			}
+			return &fileUploadTarget{
+				ChannelID: channel.ID,
+				Label:     formatUploadChannelLabel(&channel, recipient),
+			}, nil
+		}
+
+		cursor = strings.TrimSpace(channels.ResponseMetadata.NextCursor)
+		if cursor == "" {
+			break
+		}
 	}
 
 	return nil, &slack.APIError{Method: "conversations.resolve", Code: "channel_not_found"}
@@ -343,15 +354,6 @@ func downloadURLForFile(file *slack.File) string {
 		return fileURL
 	}
 	return strings.TrimSpace(file.URLPrivate)
-}
-
-func downloadLimitForFile(file *slack.File) int {
-	if file == nil || file.Size <= 0 {
-		return 1024
-	}
-
-	// Slack-hosted downloads can drift slightly from the reported size.
-	return file.Size + 1024
 }
 
 func resolveUploadTitle(rawTitle, filename string) string {
@@ -434,18 +436,35 @@ func resolveDownloadPath(output, name, fileID string) (string, error) {
 	return output, nil
 }
 
-func writeFileExclusive(path string, body []byte) error {
+func openOutputFileExclusive(path string) (*os.File, error) {
 	fileHandle, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {
 		if os.IsExist(err) {
-			return fmt.Errorf("output file already exists: %s", path)
+			return nil, fmt.Errorf("output file already exists: %s", path)
 		}
-		return fmt.Errorf("failed to create output file: %w", err)
+		return nil, fmt.Errorf("failed to create output file: %w", err)
 	}
-	defer fileHandle.Close() //nolint:errcheck
 
-	if _, err := fileHandle.Write(body); err != nil {
-		return fmt.Errorf("failed to write output file: %w", err)
+	return fileHandle, nil
+}
+
+func streamDownloadedFile(client *slack.Client, fileURL, outputPath string) (err error) {
+	fileHandle, err := openOutputFileExclusive(outputPath)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		closeErr := fileHandle.Close()
+		if err == nil && closeErr != nil {
+			err = fmt.Errorf("failed to close output file: %w", closeErr)
+		}
+		if err != nil {
+			_ = os.Remove(outputPath)
+		}
+	}()
+
+	if _, _, err := client.DownloadPrivateFileToWriter(fileURL, fileHandle); err != nil {
+		return fmt.Errorf("failed to download file: %w", err)
 	}
 
 	return nil

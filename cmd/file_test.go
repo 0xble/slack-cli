@@ -108,6 +108,36 @@ func TestFileDownloadRun(t *testing.T) {
 	}
 }
 
+func TestFileDownloadRemovesPartialFileOnStreamError(t *testing.T) {
+	tempDir := t.TempDir()
+	outputPath := filepath.Join(tempDir, "report.txt")
+
+	ctx := testFileContext(func(req *http.Request) (*http.Response, error) {
+		switch req.URL.Path {
+		case "/api/files.info":
+			return fileJSONResponse(req, `{"ok":true,"file":{"id":"F123","name":"report.txt","size":5,"url_private_download":"https://files.slack.com/download/F123"}}`)
+		case "/download/F123":
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Status:     "200 OK",
+				Header:     http.Header{"Content-Type": []string{"text/plain"}},
+				Body:       errReadCloser{Reader: strings.NewReader("hel"), Err: fmt.Errorf("stream broke")},
+				Request:    req,
+			}, nil
+		default:
+			return nil, fmt.Errorf("unexpected path %s", req.URL.Path)
+		}
+	})
+
+	err := (&FileDownloadCmd{FileID: "F123", Output: outputPath}).Run(ctx)
+	if err == nil {
+		t.Fatalf("expected download error")
+	}
+	if _, statErr := os.Stat(outputPath); !os.IsNotExist(statErr) {
+		t.Fatalf("expected partial file to be removed, stat err = %v", statErr)
+	}
+}
+
 func TestFileUploadRun(t *testing.T) {
 	tempDir := t.TempDir()
 	uploadPath := filepath.Join(tempDir, "report.txt")
@@ -191,6 +221,110 @@ func TestFileUploadRun(t *testing.T) {
 
 	if !strings.Contains(output, "Uploaded file to #general (C123): F123") {
 		t.Fatalf("unexpected output: %q", output)
+	}
+}
+
+func TestFileUploadResolvesChannelNameAcrossPages(t *testing.T) {
+	tempDir := t.TempDir()
+	uploadPath := filepath.Join(tempDir, "report.txt")
+	if err := os.WriteFile(uploadPath, []byte("hello"), 0o644); err != nil {
+		t.Fatalf("os.WriteFile returned error: %v", err)
+	}
+
+	ctx := testFileContext(func(req *http.Request) (*http.Response, error) {
+		switch req.URL.Path {
+		case "/api/conversations.list":
+			cursor := req.URL.Query().Get("cursor")
+			if cursor == "" {
+				return fileJSONResponse(req, `{"ok":true,"channels":[{"id":"C111","name":"other","is_channel":true}],"response_metadata":{"next_cursor":"page-2"}}`)
+			}
+			if cursor == "page-2" {
+				return fileJSONResponse(req, `{"ok":true,"channels":[{"id":"C123","name":"general","is_channel":true}]}`)
+			}
+			return nil, fmt.Errorf("unexpected cursor %q", cursor)
+		case "/api/files.getUploadURLExternal":
+			return fileJSONResponse(req, `{"ok":true,"upload_url":"https://upload.example/F123","file_id":"F123"}`)
+		case "/api/files.completeUploadExternal":
+			body, err := io.ReadAll(req.Body)
+			if err != nil {
+				t.Fatalf("failed to read request body: %v", err)
+			}
+			values, err := url.ParseQuery(string(body))
+			if err != nil {
+				t.Fatalf("failed to parse request body: %v", err)
+			}
+			if values.Get("channel_id") != "C123" {
+				t.Fatalf("expected paginated channel resolution to find C123, got %q", values.Get("channel_id"))
+			}
+			return fileJSONResponse(req, `{"ok":true,"files":[{"id":"F123"}]}`)
+		case "/F123":
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Status:     "200 OK",
+				Header:     http.Header{"Content-Type": []string{"text/plain"}},
+				Body:       io.NopCloser(strings.NewReader("OK - 5")),
+				Request:    req,
+			}, nil
+		default:
+			return nil, fmt.Errorf("unexpected path %s", req.URL.Path)
+		}
+	})
+
+	if err := (&FileUploadCmd{Recipient: "#general", Path: uploadPath}).Run(ctx); err != nil {
+		t.Fatalf("FileUploadCmd.Run returned error: %v", err)
+	}
+}
+
+func TestFileUploadResolvesUserHandleAcrossPages(t *testing.T) {
+	tempDir := t.TempDir()
+	uploadPath := filepath.Join(tempDir, "report.txt")
+	if err := os.WriteFile(uploadPath, []byte("hello"), 0o644); err != nil {
+		t.Fatalf("os.WriteFile returned error: %v", err)
+	}
+
+	ctx := testFileContext(func(req *http.Request) (*http.Response, error) {
+		switch req.URL.Path {
+		case "/api/users.list":
+			cursor := req.URL.Query().Get("cursor")
+			if cursor == "" {
+				return fileJSONResponse(req, `{"ok":true,"members":[{"id":"U111","name":"other"}],"response_metadata":{"next_cursor":"page-2"}}`)
+			}
+			if cursor == "page-2" {
+				return fileJSONResponse(req, `{"ok":true,"members":[{"id":"U123","name":"alice"}]}`)
+			}
+			return nil, fmt.Errorf("unexpected cursor %q", cursor)
+		case "/api/conversations.open":
+			return fileJSONResponse(req, `{"ok":true,"channel":{"id":"D123","user":"U123","is_im":true}}`)
+		case "/api/files.getUploadURLExternal":
+			return fileJSONResponse(req, `{"ok":true,"upload_url":"https://upload.example/F123","file_id":"F123"}`)
+		case "/api/files.completeUploadExternal":
+			body, err := io.ReadAll(req.Body)
+			if err != nil {
+				t.Fatalf("failed to read request body: %v", err)
+			}
+			values, err := url.ParseQuery(string(body))
+			if err != nil {
+				t.Fatalf("failed to parse request body: %v", err)
+			}
+			if values.Get("channel_id") != "D123" {
+				t.Fatalf("expected paginated user resolution to open D123, got %q", values.Get("channel_id"))
+			}
+			return fileJSONResponse(req, `{"ok":true,"files":[{"id":"F123"}]}`)
+		case "/F123":
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Status:     "200 OK",
+				Header:     http.Header{"Content-Type": []string{"text/plain"}},
+				Body:       io.NopCloser(strings.NewReader("OK - 5")),
+				Request:    req,
+			}, nil
+		default:
+			return nil, fmt.Errorf("unexpected path %s", req.URL.Path)
+		}
+	})
+
+	if err := (&FileUploadCmd{Recipient: "@alice", Path: uploadPath}).Run(ctx); err != nil {
+		t.Fatalf("FileUploadCmd.Run returned error: %v", err)
 	}
 }
 
@@ -291,4 +425,19 @@ type fileRoundTripFunc func(req *http.Request) (*http.Response, error)
 
 func (f fileRoundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return f(req)
+}
+
+type errReadCloser struct {
+	io.Reader
+	Err error
+}
+
+func (e errReadCloser) Close() error { return nil }
+
+func (e errReadCloser) Read(p []byte) (int, error) {
+	n, err := e.Reader.Read(p)
+	if err == io.EOF && e.Err != nil {
+		return n, e.Err
+	}
+	return n, err
 }

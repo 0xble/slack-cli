@@ -149,6 +149,34 @@ func (c *Client) DownloadPrivateFile(fileURL string, maxBytes int) ([]byte, stri
 	return body, resp.Header.Get("Content-Type"), nil
 }
 
+func (c *Client) DownloadPrivateFileToWriter(fileURL string, writer io.Writer) (string, int64, error) {
+	req, err := http.NewRequest("GET", fileURL, nil)
+	if err != nil {
+		return "", 0, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	if isSlackHostedURL(fileURL) {
+		req.Header.Set("Authorization", "Bearer "+c.userToken)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return "", 0, fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close() //nolint:errcheck
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return "", 0, fmt.Errorf("slack file download returned HTTP %d: %s", resp.StatusCode, resp.Status)
+	}
+
+	written, err := io.Copy(writer, resp.Body)
+	if err != nil {
+		return "", written, fmt.Errorf("failed to stream response: %w", err)
+	}
+
+	return resp.Header.Get("Content-Type"), written, nil
+}
+
 func (c *Client) UploadExternalFile(uploadURL, filename string, body io.Reader, contentLength int64) error {
 	req, err := http.NewRequest(http.MethodPost, uploadURL, body)
 	if err != nil {
@@ -355,6 +383,10 @@ func (c *Client) DeleteFile(fileID string) error {
 }
 
 func (c *Client) ListConversations(types string, limit int) (*ConversationsResponse, error) {
+	return c.ListConversationsPage(types, limit, "")
+}
+
+func (c *Client) ListConversationsPage(types string, limit int, cursor string) (*ConversationsResponse, error) {
 	params := url.Values{}
 	if types != "" {
 		params.Set("types", types)
@@ -363,6 +395,9 @@ func (c *Client) ListConversations(types string, limit int) (*ConversationsRespo
 	}
 	if limit > 0 {
 		params.Set("limit", fmt.Sprintf("%d", limit))
+	}
+	if strings.TrimSpace(cursor) != "" {
+		params.Set("cursor", cursor)
 	}
 
 	body, err := c.request("conversations.list", params)
@@ -471,9 +506,16 @@ func (c *Client) LookupUserByEmail(email string) (*User, error) {
 }
 
 func (c *Client) ListUsers(limit int) (*UsersResponse, error) {
+	return c.ListUsersPage(limit, "")
+}
+
+func (c *Client) ListUsersPage(limit int, cursor string) (*UsersResponse, error) {
 	params := url.Values{}
 	if limit > 0 {
 		params.Set("limit", fmt.Sprintf("%d", limit))
+	}
+	if strings.TrimSpace(cursor) != "" {
+		params.Set("cursor", cursor)
 	}
 
 	body, err := c.request("users.list", params)

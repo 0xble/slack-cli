@@ -89,8 +89,9 @@ type Profile struct {
 }
 
 type UsersResponse struct {
-	OK      bool   `json:"ok"`
-	Members []User `json:"members"`
+	OK               bool             `json:"ok"`
+	Members          []User           `json:"members"`
+	ResponseMetadata ResponseMetadata `json:"response_metadata,omitempty"`
 }
 
 type Channel struct {
@@ -114,8 +115,13 @@ type Topic struct {
 }
 
 type ConversationsResponse struct {
-	OK       bool      `json:"ok"`
-	Channels []Channel `json:"channels"`
+	OK               bool             `json:"ok"`
+	Channels         []Channel        `json:"channels"`
+	ResponseMetadata ResponseMetadata `json:"response_metadata,omitempty"`
+}
+
+type ResponseMetadata struct {
+	NextCursor string `json:"next_cursor,omitempty"`
 }
 
 type OpenConversationResponse struct {

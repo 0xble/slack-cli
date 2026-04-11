@@ -151,6 +151,34 @@ func TestDownloadPrivateFile_AuthorizationHeaderPolicy(t *testing.T) {
 	}
 }
 
+func TestDownloadPrivateFileToWriter(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		_, _ = w.Write([]byte("streamed"))
+	}))
+	defer server.Close()
+
+	client := &Client{
+		userToken:  "xoxp-test-token",
+		httpClient: server.Client(),
+	}
+
+	var builder strings.Builder
+	contentType, written, err := client.DownloadPrivateFileToWriter(server.URL, &builder)
+	if err != nil {
+		t.Fatalf("DownloadPrivateFileToWriter returned error: %v", err)
+	}
+	if contentType != "text/plain" {
+		t.Fatalf("unexpected contentType %q", contentType)
+	}
+	if written != int64(len("streamed")) {
+		t.Fatalf("unexpected bytes written %d", written)
+	}
+	if builder.String() != "streamed" {
+		t.Fatalf("unexpected body %q", builder.String())
+	}
+}
+
 func TestOpenConversation_UsesPOSTFormEncoding(t *testing.T) {
 	client := &Client{
 		userToken: "xoxp-test-token",
@@ -220,6 +248,31 @@ func TestListFiles(t *testing.T) {
 	}
 	if len(resp.Files) != 1 || resp.Files[0].ID != "F123" {
 		t.Fatalf("unexpected response: %+v", resp)
+	}
+}
+
+func TestListConversationsPage(t *testing.T) {
+	client := &Client{
+		userToken: "xoxp-test-token",
+		httpClient: &http.Client{
+			Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				if req.URL.Path != "/api/conversations.list" {
+					t.Fatalf("expected /api/conversations.list, got %s", req.URL.Path)
+				}
+				if req.URL.Query().Get("cursor") != "page-2" {
+					t.Fatalf("expected cursor=page-2, got %q", req.URL.Query().Get("cursor"))
+				}
+				return jsonResponse(req, `{"ok":true,"channels":[{"id":"C123","name":"general"}],"response_metadata":{"next_cursor":"page-3"}}`)
+			}),
+		},
+	}
+
+	resp, err := client.ListConversationsPage("public_channel,private_channel", 1000, "page-2")
+	if err != nil {
+		t.Fatalf("ListConversationsPage returned error: %v", err)
+	}
+	if resp.ResponseMetadata.NextCursor != "page-3" {
+		t.Fatalf("unexpected next cursor %q", resp.ResponseMetadata.NextCursor)
 	}
 }
 
@@ -394,6 +447,31 @@ func TestCompleteUploadExternal(t *testing.T) {
 	}
 	if len(resp.Files) != 1 || resp.Files[0].ID != "F123" {
 		t.Fatalf("unexpected response: %+v", resp)
+	}
+}
+
+func TestListUsersPage(t *testing.T) {
+	client := &Client{
+		userToken: "xoxp-test-token",
+		httpClient: &http.Client{
+			Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				if req.URL.Path != "/api/users.list" {
+					t.Fatalf("expected /api/users.list, got %s", req.URL.Path)
+				}
+				if req.URL.Query().Get("cursor") != "page-2" {
+					t.Fatalf("expected cursor=page-2, got %q", req.URL.Query().Get("cursor"))
+				}
+				return jsonResponse(req, `{"ok":true,"members":[{"id":"U123","name":"alice"}],"response_metadata":{"next_cursor":"page-3"}}`)
+			}),
+		},
+	}
+
+	resp, err := client.ListUsersPage(1000, "page-2")
+	if err != nil {
+		t.Fatalf("ListUsersPage returned error: %v", err)
+	}
+	if resp.ResponseMetadata.NextCursor != "page-3" {
+		t.Fatalf("unexpected next cursor %q", resp.ResponseMetadata.NextCursor)
 	}
 }
 
