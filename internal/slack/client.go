@@ -133,7 +133,7 @@ func (c *Client) DownloadPrivateFile(fileURL string, maxBytes int) ([]byte, stri
 		req.Header.Set("Authorization", "Bearer "+c.userToken)
 	}
 
-	resp, err := c.transferHTTPClient().Do(req)
+	resp, err := c.downloadHTTPClient().Do(req)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to send request: %w", err)
 	}
@@ -169,7 +169,7 @@ func (c *Client) DownloadPrivateFileToWriter(fileURL string, writer io.Writer) (
 		req.Header.Set("Authorization", "Bearer "+c.userToken)
 	}
 
-	resp, err := c.transferHTTPClient().Do(req)
+	resp, err := c.downloadHTTPClient().Do(req)
 	if err != nil {
 		return "", 0, fmt.Errorf("failed to send request: %w", err)
 	}
@@ -211,6 +211,35 @@ func (c *Client) UploadExternalFile(uploadURL, filename string, body io.Reader, 
 	}
 
 	return nil
+}
+
+func (c *Client) downloadHTTPClient() *http.Client {
+	clientCopy := *c.transferHTTPClient()
+	var next func(*http.Request, []*http.Request) error
+	if c.httpClient != nil {
+		next = c.httpClient.CheckRedirect
+	}
+	clientCopy.CheckRedirect = redirectPolicyWithSlackAuth(c.userToken, next)
+	return &clientCopy
+}
+
+func redirectPolicyWithSlackAuth(userToken string, next func(*http.Request, []*http.Request) error) func(*http.Request, []*http.Request) error {
+	return func(req *http.Request, via []*http.Request) error {
+		if isSlackHostedURL(req.URL.String()) {
+			req.Header.Set("Authorization", "Bearer "+userToken)
+		} else {
+			req.Header.Del("Authorization")
+		}
+
+		if next != nil {
+			return next(req, via)
+		}
+		if len(via) >= 10 {
+			return errors.New("stopped after 10 redirects")
+		}
+
+		return nil
+	}
 }
 
 func isSlackHostedURL(rawURL string) bool {
