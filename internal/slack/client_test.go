@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestParseThreadURL(t *testing.T) {
@@ -176,6 +177,26 @@ func TestDownloadPrivateFileToWriter(t *testing.T) {
 	}
 	if builder.String() != "streamed" {
 		t.Fatalf("unexpected body %q", builder.String())
+	}
+}
+
+func TestTransferHTTPClient_RemovesOverallTimeout(t *testing.T) {
+	client := &Client{
+		userToken: "xoxp-test-token",
+		httpClient: &http.Client{
+			Timeout: 30 * time.Second,
+		},
+	}
+
+	transferClient := client.transferHTTPClient()
+	if transferClient == client.httpClient {
+		t.Fatalf("transferHTTPClient should return a distinct client copy")
+	}
+	if transferClient.Timeout != 0 {
+		t.Fatalf("transferHTTPClient timeout = %v, want 0", transferClient.Timeout)
+	}
+	if client.httpClient.Timeout != 30*time.Second {
+		t.Fatalf("base client timeout mutated to %v", client.httpClient.Timeout)
 	}
 }
 

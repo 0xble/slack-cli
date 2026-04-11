@@ -51,6 +51,16 @@ func NewClientWithHTTPClient(userToken string, httpClient *http.Client) *Client 
 	return client
 }
 
+func (c *Client) transferHTTPClient() *http.Client {
+	if c.httpClient == nil {
+		return &http.Client{}
+	}
+
+	clientCopy := *c.httpClient
+	clientCopy.Timeout = 0
+	return &clientCopy
+}
+
 func (c *Client) request(method string, params url.Values) ([]byte, error) {
 	return c.requestWithMethod(http.MethodGet, method, params)
 }
@@ -123,7 +133,7 @@ func (c *Client) DownloadPrivateFile(fileURL string, maxBytes int) ([]byte, stri
 		req.Header.Set("Authorization", "Bearer "+c.userToken)
 	}
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.transferHTTPClient().Do(req)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to send request: %w", err)
 	}
@@ -159,7 +169,7 @@ func (c *Client) DownloadPrivateFileToWriter(fileURL string, writer io.Writer) (
 		req.Header.Set("Authorization", "Bearer "+c.userToken)
 	}
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.transferHTTPClient().Do(req)
 	if err != nil {
 		return "", 0, fmt.Errorf("failed to send request: %w", err)
 	}
@@ -190,7 +200,7 @@ func (c *Client) UploadExternalFile(uploadURL, filename string, body io.Reader, 
 	req.Header.Set("Content-Type", contentType)
 	req.ContentLength = contentLength
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.transferHTTPClient().Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to upload file bytes: %w", err)
 	}
