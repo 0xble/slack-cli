@@ -1,6 +1,7 @@
 package slack
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -148,6 +149,61 @@ func TestDownloadPrivateFile_AuthorizationHeaderPolicy(t *testing.T) {
 				t.Fatalf("DownloadPrivateFile() authorization header = %q, want %q", gotAuth, tt.wantAuth)
 			}
 		})
+	}
+}
+
+func TestDownloadPrivateFile_PreservesSlackAuthAcrossRedirects(t *testing.T) {
+	var requests []string
+
+	client := &Client{
+		userToken: "xoxp-test-token",
+		httpClient: &http.Client{
+			Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				requests = append(requests, req.URL.String()+" auth="+req.Header.Get("Authorization"))
+
+				switch req.URL.Host {
+				case "files.slack.com":
+					return &http.Response{
+						StatusCode: http.StatusFound,
+						Status:     "302 Found",
+						Header: http.Header{
+							"Location": []string{"https://workspace.slack.com/files-pri/T123/F123/report.txt"},
+						},
+						Body:    io.NopCloser(strings.NewReader("")),
+						Request: req,
+					}, nil
+				case "workspace.slack.com":
+					return &http.Response{
+						StatusCode: http.StatusOK,
+						Status:     "200 OK",
+						Header:     http.Header{"Content-Type": []string{"text/plain"}},
+						Body:       io.NopCloser(strings.NewReader("ok")),
+						Request:    req,
+					}, nil
+				default:
+					return nil, fmt.Errorf("unexpected host %s", req.URL.Host)
+				}
+			}),
+		},
+	}
+
+	body, contentType, err := client.DownloadPrivateFile("https://files.slack.com/download/F123", 2)
+	if err != nil {
+		t.Fatalf("DownloadPrivateFile returned error: %v", err)
+	}
+	if string(body) != "ok" {
+		t.Fatalf("DownloadPrivateFile body = %q, want %q", string(body), "ok")
+	}
+	if contentType != "text/plain" {
+		t.Fatalf("DownloadPrivateFile contentType = %q, want %q", contentType, "text/plain")
+	}
+	if len(requests) != 2 {
+		t.Fatalf("expected 2 requests, got %d (%v)", len(requests), requests)
+	}
+	for _, got := range requests {
+		if !strings.Contains(got, "auth=Bearer xoxp-test-token") {
+			t.Fatalf("redirect chain missing authorization header: %v", requests)
+		}
 	}
 }
 
