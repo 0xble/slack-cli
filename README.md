@@ -102,6 +102,17 @@ slack-cli channel read <url> --markdown # Read by URL as markdown
 slack-cli channel info #general         # Show channel details
 ```
 
+### Files
+
+```bash
+slack-cli file list                             # List recent files
+slack-cli file info F123                        # Show file metadata
+slack-cli file download F123                    # Download to the current directory
+slack-cli file upload #general ./report.txt     # Upload and share a file
+slack-cli file upload @alice ./report.txt       # Upload into a DM
+slack-cli file delete F123                      # Delete a file
+```
+
 ### Search
 
 ```bash
@@ -167,10 +178,12 @@ The included manifest requests these user token scopes:
 - `channels:history` - Read public channel messages
 - `channels:read` - List public channels
 - `files:read` - Read file metadata and download private file/image URLs
+- `files:write` - Upload and delete files
 - `groups:history` - Read private channel messages
 - `groups:read` - List private channels
 - `im:history` - Read direct message history
 - `im:read` - Access direct message metadata
+- `im:write` - Open direct messages for DM-targeted file uploads
 - `mpim:history` - Read multi-party direct message history
 - `mpim:read` - Access multi-party direct message metadata
 - `search:read` - Search messages

@@ -6,7 +6,7 @@ allowed-tools: Bash(slack-cli:*)
 
 # Slack CLI
 
-A CLI for reading Slack content - messages, threads, channels, and users.
+A CLI for reading Slack content, searching messages, browsing users, and working with files.
 
 ## Installation
 
@@ -28,6 +28,11 @@ slack-cli search <query>      # Search messages
 slack-cli channel list        # List channels you're a member of
 slack-cli channel read        # Read recent messages from a channel name, ID, or URL
 slack-cli channel info        # Show channel information by name, ID, or URL
+slack-cli file list           # List recent files
+slack-cli file info           # Show file metadata
+slack-cli file download       # Download a file by ID
+slack-cli file upload         # Upload and share a file
+slack-cli file delete         # Delete a file by ID
 slack-cli thread read         # Read a thread by URL or channel+timestamp (supports --markdown)
 slack-cli user list           # List users in the workspace
 slack-cli user info           # Show user information
@@ -57,6 +62,13 @@ slack-cli channel read #general --limit 50
 slack-cli channel read "https://workspace.slack.com/archives/C123" --markdown
 ```
 
+### Upload a file
+
+```bash
+slack-cli file upload #general ./report.txt
+slack-cli file upload @alice ./report.txt --comment "latest version"
+```
+
 ## Discovering Options
 
 To see available subcommands and flags, run `--help` on any command:
@@ -70,6 +82,7 @@ slack-cli search --help
 ## Notes
 
 - Use `--markdown` with `view`, `thread read`, or `channel read` when you need structured output
+- `file upload` accepts channel names, conversation IDs, `@username`, or `U123`
 - Thread URLs with `thread_ts` parameter are automatically detected
 - Channel names can include or omit the `#` prefix
 - If you see `channel_not_found` and multiple workspaces are configured, retry with `--workspace <workspace>`

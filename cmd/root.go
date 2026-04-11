@@ -9,14 +9,19 @@ import (
 )
 
 type Context struct {
-	Config    *config.Config
-	Workspace string
+	Config        *config.Config
+	Workspace     string
+	ClientFactory func(token string) *slack.Client
 }
 
 func (ctx *Context) NewClient(urlHint string) (*slack.Client, error) {
 	token, err := ctx.resolveToken(urlHint)
 	if err != nil {
 		return nil, err
+	}
+
+	if ctx.ClientFactory != nil {
+		return ctx.ClientFactory(token), nil
 	}
 
 	return slack.NewClient(token), nil
@@ -81,6 +86,7 @@ type CLI struct {
 	Auth      AuthCmd    `cmd:"" help:"Authentication commands"`
 	View      ViewCmd    `cmd:"" help:"View any Slack URL (message, thread, or channel)"`
 	Channel   ChannelCmd `cmd:"" help:"Channel commands"`
+	File      FileCmd    `cmd:"" help:"File commands"`
 	Search    SearchCmd  `cmd:"" help:"Search messages"`
 	Thread    ThreadCmd  `cmd:"" help:"Thread commands"`
 	User      UserCmd    `cmd:"" help:"User commands"`
