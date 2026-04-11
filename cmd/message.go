@@ -52,7 +52,7 @@ func (c *MessageSendCmd) Run(ctx *Context) error {
 		return fmt.Errorf("failed to send message: %w", err)
 	}
 
-	fmt.Printf("Sent message to %s (%s) at %s\n", formatConversationTargetLabel(target), resp.Channel, resp.TS)
+	fmt.Printf("Sent message to %s (%s) at %s\n", formatMessageConversationTargetLabel(target), resp.Channel, resp.TS)
 	return nil
 }
 
@@ -80,7 +80,7 @@ func (c *MessageSendCmd) messageText() (string, error) {
 	return c.Text, nil
 }
 
-func formatConversationTargetLabel(target *slack.ConversationTarget) string {
+func formatMessageConversationTargetLabel(target *slack.ConversationTarget) string {
 	if target == nil {
 		return "recipient"
 	}

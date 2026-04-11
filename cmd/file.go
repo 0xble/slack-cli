@@ -32,7 +32,7 @@ func (c *FileListCmd) Run(ctx *Context) error {
 		return err
 	}
 
-	resp, err := client.ListFiles(c.Limit)
+	resp, err := client.ListFiles(slack.ListFilesParams{Limit: c.Limit})
 	if err != nil {
 		return fmt.Errorf("failed to list files: %w", err)
 	}

@@ -263,7 +263,7 @@ func TestListFiles(t *testing.T) {
 		},
 	}
 
-	resp, err := client.ListFiles(20)
+	resp, err := client.ListFiles(ListFilesParams{Limit: 20})
 	if err != nil {
 		t.Fatalf("ListFiles returned error: %v", err)
 	}
@@ -504,6 +504,89 @@ func jsonResponse(req *http.Request, body string) (*http.Response, error) {
 		Body:       io.NopCloser(strings.NewReader(body)),
 		Request:    req,
 	}, nil
+}
+
+func TestListFiles_UsesQueryParams(t *testing.T) {
+	client := &Client{
+		userToken: "xoxp-test-token",
+		httpClient: &http.Client{
+			Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				if req.Method != http.MethodGet {
+					t.Fatalf("expected GET, got %s", req.Method)
+				}
+				if req.URL.Path != "/api/files.list" {
+					t.Fatalf("expected /api/files.list, got %s", req.URL.Path)
+				}
+				values := req.URL.Query()
+				if values.Get("count") != "10" {
+					t.Fatalf("expected count=10, got %q", values.Get("count"))
+				}
+				if values.Get("types") != "canvas" {
+					t.Fatalf("expected types=canvas, got %q", values.Get("types"))
+				}
+				if values.Get("channel") != "C123" {
+					t.Fatalf("expected channel=C123, got %q", values.Get("channel"))
+				}
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Status:     "200 OK",
+					Header:     http.Header{"Content-Type": []string{"application/json"}},
+					Body:       io.NopCloser(strings.NewReader(`{"ok":true,"files":[{"id":"F123","filetype":"quip"}]}`)),
+					Request:    req,
+				}, nil
+			}),
+		},
+	}
+
+	resp, err := client.ListFiles(ListFilesParams{Limit: 10, Types: "canvas", ChannelID: "C123"})
+	if err != nil {
+		t.Fatalf("ListFiles returned error: %v", err)
+	}
+	if len(resp.Files) != 1 || resp.Files[0].ID != "F123" {
+		t.Fatalf("unexpected response: %+v", resp)
+	}
+}
+
+func TestGetUploadURLExternal_UsesPOSTFormEncoding(t *testing.T) {
+	client := &Client{
+		userToken: "xoxp-test-token",
+		httpClient: &http.Client{
+			Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				if req.Method != http.MethodPost {
+					t.Fatalf("expected POST, got %s", req.Method)
+				}
+				if req.URL.Path != "/api/files.getUploadURLExternal" {
+					t.Fatalf("expected /api/files.getUploadURLExternal, got %s", req.URL.Path)
+				}
+				body, err := io.ReadAll(req.Body)
+				if err != nil {
+					t.Fatalf("failed to read request body: %v", err)
+				}
+				values, err := url.ParseQuery(string(body))
+				if err != nil {
+					t.Fatalf("failed to parse request body: %v", err)
+				}
+				if values.Get("filename") != "report.txt" || values.Get("length") != "5" {
+					t.Fatalf("unexpected body: %q", string(body))
+				}
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Status:     "200 OK",
+					Header:     http.Header{"Content-Type": []string{"application/json"}},
+					Body:       io.NopCloser(strings.NewReader(`{"ok":true,"upload_url":"https://upload.example/F123","file_id":"F123"}`)),
+					Request:    req,
+				}, nil
+			}),
+		},
+	}
+
+	resp, err := client.GetUploadURLExternal("report.txt", 5)
+	if err != nil {
+		t.Fatalf("GetUploadURLExternal returned error: %v", err)
+	}
+	if resp.FileID != "F123" {
+		t.Fatalf("unexpected response: %+v", resp)
+	}
 }
 
 type roundTripFunc func(req *http.Request) (*http.Response, error)

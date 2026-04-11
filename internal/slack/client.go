@@ -372,10 +372,22 @@ func (c *Client) SearchMessages(query string, count int) (*SearchResponse, error
 	return &result, nil
 }
 
-func (c *Client) ListFiles(limit int) (*FilesListResponse, error) {
+type ListFilesParams struct {
+	Limit     int
+	Types     string
+	ChannelID string
+}
+
+func (c *Client) ListFiles(p ListFilesParams) (*FilesListResponse, error) {
 	params := url.Values{}
-	if limit > 0 {
-		params.Set("count", fmt.Sprintf("%d", limit))
+	if p.Limit > 0 {
+		params.Set("count", fmt.Sprintf("%d", p.Limit))
+	}
+	if strings.TrimSpace(p.Types) != "" {
+		params.Set("types", p.Types)
+	}
+	if strings.TrimSpace(p.ChannelID) != "" {
+		params.Set("channel", p.ChannelID)
 	}
 
 	body, err := c.request("files.list", params)
