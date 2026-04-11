@@ -36,6 +36,15 @@ cd slack-cli
 mise run build
 ```
 
+### Local Fork Install
+
+```bash
+./bin/upgrade
+./bin/smoke
+```
+
+The fork-managed install path is `~/.local/bin/slack-cli`.
+
 ## Setup
 
 ### 1. Create a Slack App

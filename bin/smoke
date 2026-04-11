@@ -2,7 +2,8 @@
 set -euo pipefail
 
 BIN_PATH="${SLACK_CLI_INSTALL_PATH:-$HOME/.local/bin/slack-cli}"
-EXPECTED_SUFFIX="${SLACK_CLI_FORK_VERSION_SUFFIX:-0xble.0.1.0}"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+EXPECTED_VERSION="$("$REPO_ROOT/bin/version")"
 
 if [[ ! -x "$BIN_PATH" ]]; then
   echo "missing installed binary: $BIN_PATH" >&2
@@ -12,8 +13,8 @@ fi
 VERSION_OUTPUT="$("$BIN_PATH" version 2>&1)"
 echo "$VERSION_OUTPUT"
 
-if ! printf '%s\n' "$VERSION_OUTPUT" | grep -Fq -- "$EXPECTED_SUFFIX"; then
-  echo "installed binary is not fork-branded with suffix $EXPECTED_SUFFIX" >&2
+if ! printf '%s\n' "$VERSION_OUTPUT" | grep -Fq -- "$EXPECTED_VERSION"; then
+  echo "installed binary version mismatch: expected $EXPECTED_VERSION" >&2
   exit 1
 fi
 
