@@ -175,13 +175,16 @@ func workspaceKeyFromAuthResult(userURL, teamID, team string) string {
 
 // Scopes needed for the CLI
 var oauthScopes = []string{
+	"chat:write",
 	"channels:history",
 	"channels:read",
 	"files:read",
+	"files:write",
 	"groups:history",
 	"groups:read",
 	"im:history",
 	"im:read",
+	"im:write",
 	"mpim:history",
 	"mpim:read",
 	"search:read",

@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -279,6 +281,65 @@ func (c *Client) SearchMessages(query string, count int) (*SearchResponse, error
 	return &result, nil
 }
 
+type ListFilesParams struct {
+	Limit     int
+	Types     string
+	ChannelID string
+}
+
+func (c *Client) ListFiles(params ListFilesParams) (*FilesListResponse, error) {
+	values := url.Values{}
+	if params.Limit > 0 {
+		values.Set("count", fmt.Sprintf("%d", params.Limit))
+	}
+	if strings.TrimSpace(params.Types) != "" {
+		values.Set("types", strings.TrimSpace(params.Types))
+	}
+	if strings.TrimSpace(params.ChannelID) != "" {
+		values.Set("channel", strings.TrimSpace(params.ChannelID))
+	}
+
+	body, err := c.request("files.list", values)
+	if err != nil {
+		return nil, err
+	}
+
+	var result FilesListResponse
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("failed to parse files.list response: %w", err)
+	}
+
+	return &result, nil
+}
+
+func (c *Client) GetFileInfo(fileID string) (*File, error) {
+	params := url.Values{}
+	params.Set("file", fileID)
+
+	body, err := c.request("files.info", params)
+	if err != nil {
+		return nil, err
+	}
+
+	var result FileInfoResponse
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("failed to parse files.info response: %w", err)
+	}
+
+	return &result.File, nil
+}
+
+func (c *Client) DeleteFile(fileID string) error {
+	params := url.Values{}
+	params.Set("file", fileID)
+
+	if _, err := c.requestPost("files.delete", params); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (c *Client) ListConversations(types string, limit int) (*ConversationsResponse, error) {
 	params := url.Values{}
 	if types != "" {
@@ -358,6 +419,83 @@ func (c *Client) OpenConversation(users []string, returnIM bool) (*OpenConversat
 	var result OpenConversationResponse
 	if err := json.Unmarshal(body, &result); err != nil {
 		return nil, fmt.Errorf("failed to parse conversations.open response: %w", err)
+	}
+
+	return &result, nil
+}
+
+func (c *Client) GetUploadURLExternal(filename string, length int64) (*GetUploadURLExternalResponse, error) {
+	params := url.Values{}
+	params.Set("filename", filename)
+	params.Set("length", fmt.Sprintf("%d", length))
+
+	body, err := c.requestPost("files.getUploadURLExternal", params)
+	if err != nil {
+		return nil, err
+	}
+
+	var result GetUploadURLExternalResponse
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("failed to parse files.getUploadURLExternal response: %w", err)
+	}
+
+	return &result, nil
+}
+
+func (c *Client) UploadExternalFile(uploadURL, filename string, body io.Reader, contentLength int64) error {
+	req, err := http.NewRequest(http.MethodPost, uploadURL, body)
+	if err != nil {
+		return fmt.Errorf("failed to create upload request: %w", err)
+	}
+
+	contentType := mime.TypeByExtension(filepath.Ext(strings.TrimSpace(filename)))
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	req.Header.Set("Content-Type", contentType)
+	req.ContentLength = contentLength
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to upload file bytes: %w", err)
+	}
+	defer resp.Body.Close() //nolint:errcheck
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("file upload returned HTTP %d: %s", resp.StatusCode, resp.Status)
+	}
+
+	return nil
+}
+
+func (c *Client) CompleteUploadExternal(fileID, title, channelID, initialComment, threadTS string) (*CompleteUploadExternalResponse, error) {
+	params := url.Values{}
+	filesPayload, err := json.Marshal([]map[string]string{{
+		"id":    fileID,
+		"title": title,
+	}})
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode upload completion payload: %w", err)
+	}
+	params.Set("files", string(filesPayload))
+	if channelID != "" {
+		params.Set("channel_id", channelID)
+	}
+	if initialComment != "" {
+		params.Set("initial_comment", initialComment)
+	}
+	if threadTS != "" {
+		params.Set("thread_ts", threadTS)
+	}
+
+	body, err := c.requestPost("files.completeUploadExternal", params)
+	if err != nil {
+		return nil, err
+	}
+
+	var result CompleteUploadExternalResponse
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("failed to parse files.completeUploadExternal response: %w", err)
 	}
 
 	return &result, nil

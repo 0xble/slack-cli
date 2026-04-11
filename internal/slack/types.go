@@ -44,15 +44,29 @@ func (m *MessageRef) UnmarshalJSON(data []byte) error {
 }
 
 type File struct {
-	ID                 string `json:"id"`
-	Name               string `json:"name"`
-	Title              string `json:"title"`
-	Mimetype           string `json:"mimetype"`
-	Filetype           string `json:"filetype"`
-	Size               int    `json:"size"`
-	URLPrivate         string `json:"url_private"`
-	URLPrivateDownload string `json:"url_private_download"`
-	Permalink          string `json:"permalink"`
+	ID                 string   `json:"id"`
+	Created            int64    `json:"created,omitempty"`
+	Timestamp          int64    `json:"timestamp,omitempty"`
+	Name               string   `json:"name"`
+	Title              string   `json:"title"`
+	Mimetype           string   `json:"mimetype"`
+	Filetype           string   `json:"filetype"`
+	PrettyType         string   `json:"pretty_type,omitempty"`
+	User               string   `json:"user,omitempty"`
+	Editable           bool     `json:"editable,omitempty"`
+	Size               int      `json:"size"`
+	Mode               string   `json:"mode,omitempty"`
+	IsExternal         bool     `json:"is_external,omitempty"`
+	IsPublic           bool     `json:"is_public,omitempty"`
+	PublicURLShared    bool     `json:"public_url_shared,omitempty"`
+	URLPrivate         string   `json:"url_private"`
+	URLPrivateDownload string   `json:"url_private_download"`
+	Permalink          string   `json:"permalink"`
+	PermalinkPublic    string   `json:"permalink_public,omitempty"`
+	Channels           []string `json:"channels,omitempty"`
+	Groups             []string `json:"groups,omitempty"`
+	IMs                []string `json:"ims,omitempty"`
+	FileAccess         string   `json:"file_access,omitempty"`
 }
 
 type Attachment struct {
@@ -168,6 +182,31 @@ type SearchMatch struct {
 type SearchChannel struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
+}
+
+type FilesListResponse struct {
+	OK    bool   `json:"ok"`
+	Files []File `json:"files"`
+}
+
+type FileInfoResponse struct {
+	OK   bool `json:"ok"`
+	File File `json:"file"`
+}
+
+type DeleteFileResponse struct {
+	OK bool `json:"ok"`
+}
+
+type GetUploadURLExternalResponse struct {
+	OK        bool   `json:"ok"`
+	UploadURL string `json:"upload_url"`
+	FileID    string `json:"file_id"`
+}
+
+type CompleteUploadExternalResponse struct {
+	OK    bool   `json:"ok"`
+	Files []File `json:"files"`
 }
 
 type AuthTestResponse struct {

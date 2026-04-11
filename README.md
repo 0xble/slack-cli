@@ -116,6 +116,26 @@ slack-cli message send @alice "hello"    # Send a direct message
 slack-cli message send #general "hello"  # Send to a channel
 ```
 
+### Files
+
+```bash
+slack-cli file list                            # List recent files
+slack-cli file info F123                       # Show file metadata
+slack-cli file download F123                   # Download to the current directory
+slack-cli file upload #general ./report.txt    # Upload and share to a channel
+slack-cli file delete F123                     # Delete a file
+```
+
+### Canvases
+
+```bash
+slack-cli canvas list                   # List recent canvases
+slack-cli canvas list --channel #team   # Filter canvases to one channel
+slack-cli canvas read F123              # Read canvas content as plain text
+slack-cli canvas read F123 --raw        # Output raw canvas HTML
+slack-cli canvas delete F123            # Delete a canvas
+```
+
 ### Search
 
 ```bash
@@ -182,6 +202,7 @@ The included manifest requests these user token scopes:
 - `channels:history` - Read public channel messages
 - `channels:read` - List public channels
 - `files:read` - Read file metadata and download private file/image URLs
+- `files:write` - Upload, update, and delete files and canvases
 - `groups:history` - Read private channel messages
 - `groups:read` - List private channels
 - `im:history` - Read direct message history
