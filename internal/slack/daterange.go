@@ -121,25 +121,19 @@ func (d DateFilter) ToSearchOperators() string {
 	return strings.Join(parts, " ")
 }
 
-// ValidateSearchLast rejects sub-day --last durations, which Slack's search
-// operators cannot express (they are calendar-date only). Callers of search
-// should invoke this before composing the query so a flag like --last 12h
-// fails loudly instead of silently broadening to a multi-day window.
+// ValidateSearchLast rejects --last entirely on search. Slack's search
+// operators are calendar-date only, so any --last duration loses intra-day
+// precision: running --last 24h at 15:00 UTC resolves to "since yesterday
+// 15:00," which the operators can only approximate as "since yesterday
+// 00:00," returning messages hours outside the requested window. Callers
+// should invoke this before composing the query so the flag fails loudly
+// instead of silently broadening. Use --after DATE, --before DATE, or --on
+// DATE for search windows.
 func ValidateSearchLast(last string) error {
-	last = strings.TrimSpace(last)
-	if last == "" {
+	if strings.TrimSpace(last) == "" {
 		return nil
 	}
-	dur, err := parseExtendedDuration(last)
-	if err != nil {
-		// Bad input is surfaced by ResolveDateFilter; no reason to
-		// double-report here.
-		return nil
-	}
-	if dur < 24*time.Hour {
-		return fmt.Errorf("search only supports day-precision windows; --last durations shorter than 24h cannot be expressed as a Slack search operator")
-	}
-	return nil
+	return fmt.Errorf("--last cannot be used with search because Slack's search operators are calendar-date only and cannot express a rolling-duration window; use --after DATE, --before DATE, or --on DATE instead")
 }
 
 // QueryHasDateOperator reports whether the given search query already

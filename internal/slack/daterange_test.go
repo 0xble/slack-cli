@@ -142,19 +142,23 @@ func TestDateFilter_ToTimestampParams_PreservesMicroseconds(t *testing.T) {
 	}
 }
 
-func TestValidateSearchLast_RejectsSubDay(t *testing.T) {
-	for _, last := range []string{"12h", "30m", "45s", "0.5d"} {
+func TestValidateSearchLast_RejectsAnyLast(t *testing.T) {
+	// Slack's search operators are calendar-date only, so any --last value
+	// loses intra-day precision when resolved into a calendar window.
+	// ValidateSearchLast should reject every non-empty input.
+	for _, last := range []string{"12h", "30m", "45s", "24h", "1d", "7d", "2w"} {
 		if err := ValidateSearchLast(last); err == nil {
 			t.Fatalf("expected ValidateSearchLast(%q) to reject", last)
 		}
 	}
 }
 
-func TestValidateSearchLast_AcceptsDayPlus(t *testing.T) {
-	for _, last := range []string{"", "24h", "1d", "7d", "2w", "48h"} {
-		if err := ValidateSearchLast(last); err != nil {
-			t.Fatalf("expected ValidateSearchLast(%q) to pass, got %v", last, err)
-		}
+func TestValidateSearchLast_EmptyIsNoOp(t *testing.T) {
+	if err := ValidateSearchLast(""); err != nil {
+		t.Fatalf("expected empty --last to pass, got %v", err)
+	}
+	if err := ValidateSearchLast("   "); err != nil {
+		t.Fatalf("expected whitespace --last to pass, got %v", err)
 	}
 }
 
