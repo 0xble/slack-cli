@@ -141,11 +141,18 @@ slack-cli user list --jsonl
 slack-cli channel info C123 --json
 ```
 
-Message records share a common shape across `search`, `channel read`, and
-`thread read`: `ts`, `user`, `user_id`, `text` (formatted), `text_raw`
-(unresolved), `channel.{id,name,type}`, `workspace`, `permalink` (when
-available), and `reply_count`. `channel.type` is one of `channel`,
-`private_channel`, `im`, or `mpim`.
+Message records default to a compact shape focused on per-record signal:
+`ts`, `user`, `user_id`, `text` (resolver-formatted), `subtype` (when set,
+e.g. `bot_message`, `channel_join`, `channel_archive`, `huddle_thread`),
+`reply_count`, `files`, and — on `search` — `channel`, `workspace`,
+`permalink`. Fields that only restate the command scope (`type`, the
+scope `channel` on `channel read` / `thread read`, the scope `thread_ts`
+on `thread read`) and duplicates (`text_raw`) are omitted. `channel.type`
+is one of `channel`, `private_channel`, `im`, or `mpim`.
+
+Pass `--verbose` (`-V`) to restore the full shape: `type`, `text_raw`,
+and the scope `channel` / `thread_ts` come back for consumers that want
+the wire-complete record.
 
 ### Authentication
 
