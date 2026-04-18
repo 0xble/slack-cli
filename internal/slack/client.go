@@ -134,9 +134,6 @@ func (c *Client) AuthTest() (*AuthTestResponse, error) {
 	return &result, nil
 }
 
-// HistoryParams configures a conversations.history call.
-// Oldest/Latest are Slack timestamp strings; Inclusive sets whether the
-// endpoints are included in the result.
 type HistoryParams struct {
 	Channel   string
 	Limit     int
@@ -145,7 +142,6 @@ type HistoryParams struct {
 	Inclusive bool
 }
 
-// RepliesParams configures a conversations.replies call.
 type RepliesParams struct {
 	Channel   string
 	ThreadTS  string
@@ -155,22 +151,26 @@ type RepliesParams struct {
 	Inclusive bool
 }
 
+func applyHistoryParams(v url.Values, channel string, limit int, oldest, latest string, inclusive bool) {
+	v.Set("channel", channel)
+	if limit > 0 {
+		v.Set("limit", fmt.Sprintf("%d", limit))
+	}
+	if oldest != "" {
+		v.Set("oldest", oldest)
+	}
+	if latest != "" {
+		v.Set("latest", latest)
+	}
+	if inclusive {
+		v.Set("inclusive", "true")
+	}
+}
+
 func (c *Client) GetConversationReplies(p RepliesParams) (*RepliesResponse, error) {
 	params := url.Values{}
-	params.Set("channel", p.Channel)
+	applyHistoryParams(params, p.Channel, p.Limit, p.Oldest, p.Latest, p.Inclusive)
 	params.Set("ts", p.ThreadTS)
-	if p.Limit > 0 {
-		params.Set("limit", fmt.Sprintf("%d", p.Limit))
-	}
-	if p.Oldest != "" {
-		params.Set("oldest", p.Oldest)
-	}
-	if p.Latest != "" {
-		params.Set("latest", p.Latest)
-	}
-	if p.Inclusive {
-		params.Set("inclusive", "true")
-	}
 
 	body, err := c.request("conversations.replies", params)
 	if err != nil {
@@ -187,19 +187,7 @@ func (c *Client) GetConversationReplies(p RepliesParams) (*RepliesResponse, erro
 
 func (c *Client) GetConversationHistory(p HistoryParams) (*HistoryResponse, error) {
 	params := url.Values{}
-	params.Set("channel", p.Channel)
-	if p.Limit > 0 {
-		params.Set("limit", fmt.Sprintf("%d", p.Limit))
-	}
-	if p.Oldest != "" {
-		params.Set("oldest", p.Oldest)
-	}
-	if p.Latest != "" {
-		params.Set("latest", p.Latest)
-	}
-	if p.Inclusive {
-		params.Set("inclusive", "true")
-	}
+	applyHistoryParams(params, p.Channel, p.Limit, p.Oldest, p.Latest, p.Inclusive)
 
 	body, err := c.request("conversations.history", params)
 	if err != nil {

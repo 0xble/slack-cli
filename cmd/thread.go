@@ -18,10 +18,7 @@ type ThreadReadCmd struct {
 	Timestamp string `help:"Thread timestamp" short:"t"`
 	Limit     int    `help:"Maximum number of replies" default:"100"`
 	Markdown  bool   `help:"Output as markdown" short:"m"`
-	After     string `help:"Only show replies on or after DATE (YYYY-MM-DD, UTC)" xor:"after-last,after-on"`
-	Before    string `help:"Only show replies on or before DATE (YYYY-MM-DD, UTC)" xor:"before-on"`
-	On        string `help:"Only show replies on DATE (YYYY-MM-DD, UTC)" xor:"after-on,before-on,on-last"`
-	Last      string `help:"Only show replies from the last DURATION (e.g. 45d, 12h, 2w)" xor:"after-last,on-last"`
+	slack.DateFilterFlags
 }
 
 func (c *ThreadReadCmd) Run(ctx *Context) error {
@@ -40,7 +37,7 @@ func (c *ThreadReadCmd) Run(ctx *Context) error {
 		return fmt.Errorf("provide either a thread URL or --channel and --timestamp")
 	}
 
-	filter, err := slack.ResolveDateFilter(c.After, c.Before, c.On, c.Last, time.Now())
+	filter, err := c.DateFilterFlags.Resolve(time.Now())
 	if err != nil {
 		return err
 	}

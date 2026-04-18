@@ -16,6 +16,22 @@ type DateFilter struct {
 	Before time.Time
 }
 
+// DateFilterFlags is the shared kong flag block for commands that accept
+// --after / --before / --on / --last. Embed it into a command struct to
+// avoid duplicating the flag definitions, then call Resolve to produce a
+// DateFilter.
+type DateFilterFlags struct {
+	After  string `help:"Only match messages on or after DATE (YYYY-MM-DD, UTC)" xor:"after-last,after-on"`
+	Before string `help:"Only match messages on or before DATE (YYYY-MM-DD, UTC)" xor:"before-on"`
+	On     string `help:"Only match messages on DATE (YYYY-MM-DD, UTC)" xor:"after-on,before-on,on-last"`
+	Last   string `help:"Only match messages from the last DURATION (e.g. 45d, 12h, 2w)" xor:"after-last,on-last"`
+}
+
+// Resolve validates the embedded flags and returns a filter anchored at now.
+func (f DateFilterFlags) Resolve(now time.Time) (DateFilter, error) {
+	return ResolveDateFilter(f.After, f.Before, f.On, f.Last, now)
+}
+
 // IsZero returns true when neither bound is set.
 func (d DateFilter) IsZero() bool {
 	return d.After.IsZero() && d.Before.IsZero()

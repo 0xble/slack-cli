@@ -9,16 +9,13 @@ import (
 )
 
 type SearchCmd struct {
-	Query  string `arg:"" help:"Search query (supports Slack search syntax: from:@user, in:#channel, etc.)"`
-	Limit  int    `help:"Maximum number of results" default:"20"`
-	After  string `help:"Only match messages on or after DATE (YYYY-MM-DD, UTC)" xor:"after-last,after-on"`
-	Before string `help:"Only match messages on or before DATE (YYYY-MM-DD, UTC)" xor:"before-on"`
-	On     string `help:"Only match messages on DATE (YYYY-MM-DD, UTC)" xor:"after-on,before-on,on-last"`
-	Last   string `help:"Only match messages from the last DURATION (e.g. 45d, 12h, 2w)" xor:"after-last,on-last"`
+	Query string `arg:"" help:"Search query (supports Slack search syntax: from:@user, in:#channel, etc.)"`
+	Limit int    `help:"Maximum number of results" default:"20"`
+	slack.DateFilterFlags
 }
 
 func (c *SearchCmd) Run(ctx *Context) error {
-	filter, err := slack.ResolveDateFilter(c.After, c.Before, c.On, c.Last, time.Now())
+	filter, err := c.DateFilterFlags.Resolve(time.Now())
 	if err != nil {
 		return err
 	}

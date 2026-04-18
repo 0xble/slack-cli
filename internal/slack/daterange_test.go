@@ -108,6 +108,15 @@ func TestResolveDateFilter_InvalidDuration(t *testing.T) {
 	}
 }
 
+func TestResolveDateFilter_BareUnitDuration(t *testing.T) {
+	// A bare unit like "d" has no numeric component and must be rejected
+	// instead of silently parsing as zero or a single-unit duration.
+	_, err := ResolveDateFilter("", "", "", "d", refNow)
+	if err == nil {
+		t.Fatalf("expected error for bare-unit duration %q", "d")
+	}
+}
+
 func TestResolveDateFilter_BeforeEarlierThanAfter(t *testing.T) {
 	_, err := ResolveDateFilter("2026-04-20", "2026-04-10", "", "", refNow)
 	if err == nil || !strings.Contains(err.Error(), "earlier than --after") {
