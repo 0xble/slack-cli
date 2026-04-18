@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/lox/slack-cli/internal/output"
 	"github.com/lox/slack-cli/internal/slack"
 )
 
@@ -16,6 +17,8 @@ type CanvasCmd struct {
 type CanvasListCmd struct {
 	Channel string `help:"Filter to a channel name, ID, or Slack URL"`
 	Limit   int    `help:"Maximum number of canvases to list" default:"20" short:"n"`
+	JSON    bool   `help:"Output as pretty JSON array" short:"j" xor:"format"`
+	JSONL   bool   `help:"Output as JSON Lines, one canvas per line" xor:"format"`
 }
 
 func (c *CanvasListCmd) Run(ctx *Context) error {
@@ -44,6 +47,19 @@ func (c *CanvasListCmd) Run(ctx *Context) error {
 		return fmt.Errorf("failed to list canvases: %w", err)
 	}
 
+	if c.JSON || c.JSONL {
+		records := make([]output.File, 0, len(resp.Files))
+		for _, file := range resp.Files {
+			if slack.IsCanvasFile(file) {
+				records = append(records, output.ToFile(file))
+			}
+		}
+		if c.JSONL {
+			return output.EmitJSONL(records)
+		}
+		return output.EmitJSON(records)
+	}
+
 	for _, file := range resp.Files {
 		if slack.IsCanvasFile(file) {
 			fmt.Println(formatFileListLine(file))
@@ -55,7 +71,8 @@ func (c *CanvasListCmd) Run(ctx *Context) error {
 
 type CanvasReadCmd struct {
 	CanvasID string `arg:"" name:"canvas_id" help:"Canvas ID"`
-	Raw      bool   `help:"Output raw HTML"`
+	Raw      bool   `help:"Output raw HTML" xor:"format"`
+	JSON     bool   `help:"Output as JSON including converted body" short:"j" xor:"format"`
 }
 
 func (c *CanvasReadCmd) Run(ctx *Context) error {
@@ -93,7 +110,18 @@ func (c *CanvasReadCmd) Run(ctx *Context) error {
 		return err
 	}
 
-	fmt.Println(slack.CanvasHTMLToText(string(body), userNames))
+	textBody := slack.CanvasHTMLToText(string(body), userNames)
+	if c.JSON {
+		return output.EmitJSON(struct {
+			output.File
+			Body string `json:"body,omitempty"`
+		}{
+			File: output.ToFile(*file),
+			Body: textBody,
+		})
+	}
+
+	fmt.Println(textBody)
 	return nil
 }
 

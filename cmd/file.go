@@ -56,7 +56,6 @@ func (c *FileListCmd) Run(ctx *Context) error {
 		}
 		return output.EmitJSON(records)
 	}
-
 	for _, file := range resp.Files {
 		fmt.Println(formatFileListLine(file))
 	}
