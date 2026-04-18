@@ -253,7 +253,7 @@ func TestMessageConverterPrefersMessageChannelWhenConverterHasNone(t *testing.T)
 	got := conv.Convert(slack.Message{
 		TS:      "100",
 		Text:    "x",
-		Channel: &slack.Channel{ID: "C9", Name: "from-msg"},
+		Channel: &slack.MessageRef{ID: "C9", Name: "from-msg"},
 	})
 	if got.Channel == nil || got.Channel.ID != "C9" || got.Channel.Name != "from-msg" {
 		t.Fatalf("expected channel from message ref, got %+v", got.Channel)
