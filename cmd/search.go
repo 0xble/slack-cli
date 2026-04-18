@@ -14,7 +14,8 @@ type SearchCmd struct {
 	Limit   int    `help:"Maximum number of results" default:"20"`
 	JSON    bool   `help:"Output as pretty JSON array" short:"j" xor:"format"`
 	JSONL   bool   `help:"Output as JSON Lines, one match per line" xor:"format"`
-	Verbose bool   `help:"Emit full JSON records (restore type and text_raw)" short:"V"`
+	Verbose bool   `help:"Emit full JSON records (restore type and text_raw). Overrides default_json_mode." short:"V" xor:"detail"`
+	Compact bool   `help:"Emit trimmed JSON records (drop redundant fields). Overrides default_json_mode." short:"C" xor:"detail"`
 	After   string `help:"Only match messages on or after DATE (YYYY-MM-DD, UTC)" xor:"after-last,after-on"`
 	Before  string `help:"Only match messages on or before DATE (YYYY-MM-DD, UTC)" xor:"before-on"`
 	On      string `help:"Only match messages on DATE (YYYY-MM-DD, UTC)" xor:"after-on,before-on,on-last"`
@@ -52,7 +53,7 @@ func (c *SearchCmd) Run(ctx *Context) error {
 	}
 
 	if c.JSON || c.JSONL {
-		return c.emitStructured(resolver, resp)
+		return c.emitStructured(resolver, resp, ctx.ResolveJSONVerbose(c.Verbose, c.Compact))
 	}
 
 	if resp.Messages.Total == 0 {
@@ -78,10 +79,10 @@ func (c *SearchCmd) Run(ctx *Context) error {
 	return nil
 }
 
-func (c *SearchCmd) emitStructured(resolver *slack.Resolver, resp *slack.SearchResponse) error {
+func (c *SearchCmd) emitStructured(resolver *slack.Resolver, resp *slack.SearchResponse, verbose bool) error {
 	records := make([]output.Message, 0, len(resp.Messages.Matches))
 	for _, match := range resp.Messages.Matches {
-		records = append(records, searchMatchToMessage(resolver, match, c.Verbose))
+		records = append(records, searchMatchToMessage(resolver, match, verbose))
 	}
 
 	if c.JSONL {

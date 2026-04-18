@@ -79,3 +79,36 @@ func TestThreadReadMarkdownFlagParses(t *testing.T) {
 		t.Fatalf("expected --markdown to parse for thread read, got %v", err)
 	}
 }
+
+func TestResolveJSONVerboseFlagsWin(t *testing.T) {
+	ctx := &Context{Config: &config.Config{DefaultJSONMode: "verbose"}}
+
+	if !ctx.ResolveJSONVerbose(true, false) {
+		t.Fatalf("--verbose must force verbose even when config says verbose")
+	}
+	if ctx.ResolveJSONVerbose(false, true) {
+		t.Fatalf("--compact must force compact even when config says verbose")
+	}
+}
+
+func TestResolveJSONVerboseFallsBackToConfig(t *testing.T) {
+	verbose := &Context{Config: &config.Config{DefaultJSONMode: "verbose"}}
+	if !verbose.ResolveJSONVerbose(false, false) {
+		t.Fatalf("expected verbose from config default")
+	}
+
+	compact := &Context{Config: &config.Config{DefaultJSONMode: "compact"}}
+	if compact.ResolveJSONVerbose(false, false) {
+		t.Fatalf("expected compact from config default")
+	}
+
+	empty := &Context{Config: &config.Config{}}
+	if empty.ResolveJSONVerbose(false, false) {
+		t.Fatalf("expected compact when config default is empty")
+	}
+
+	nilCfg := &Context{}
+	if nilCfg.ResolveJSONVerbose(false, false) {
+		t.Fatalf("expected compact when config is nil")
+	}
+}

@@ -14,6 +14,22 @@ type Context struct {
 	ClientFactory func(token string) *slack.Client
 }
 
+// ResolveJSONVerbose resolves the effective verbose flag for message JSON
+// output. --verbose wins, then --compact, then the config default
+// (DefaultJSONMode="verbose"), otherwise compact.
+func (ctx *Context) ResolveJSONVerbose(verbose, compact bool) bool {
+	if verbose {
+		return true
+	}
+	if compact {
+		return false
+	}
+	if ctx != nil && ctx.Config != nil {
+		return ctx.Config.JSONVerboseByDefault()
+	}
+	return false
+}
+
 func (ctx *Context) NewClient(urlHint string) (*slack.Client, error) {
 	token, err := ctx.resolveToken(urlHint)
 	if err != nil {

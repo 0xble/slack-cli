@@ -59,7 +59,8 @@ type ChannelReadCmd struct {
 	Markdown bool   `help:"Output as markdown" short:"m" xor:"format"`
 	JSON     bool   `help:"Output as pretty JSON array, oldest first" short:"j" xor:"format"`
 	JSONL    bool   `help:"Output as JSON Lines, oldest first" xor:"format"`
-	Verbose  bool   `help:"Emit full JSON records (restore type, text_raw, and scope channel)" short:"V"`
+	Verbose  bool   `help:"Emit full JSON records (restore type, text_raw, and scope channel). Overrides default_json_mode." short:"V" xor:"detail"`
+	Compact  bool   `help:"Emit trimmed JSON records (drop redundant fields). Overrides default_json_mode." short:"C" xor:"detail"`
 	After    string `help:"Only show messages on or after DATE (YYYY-MM-DD, UTC)" xor:"after-last,after-on"`
 	Before   string `help:"Only show messages on or before DATE (YYYY-MM-DD, UTC)" xor:"before-on"`
 	On       string `help:"Only show messages on DATE (YYYY-MM-DD, UTC)" xor:"after-on,before-on,on-last"`
@@ -116,7 +117,7 @@ func (c *ChannelReadCmd) Run(ctx *Context) error {
 
 	if c.JSON || c.JSONL {
 		chRef := output.ChannelRefFromID(resolver, channelID, channelName)
-		conv := output.MessageConverter{Resolver: resolver, Channel: chRef, Verbose: c.Verbose}
+		conv := output.MessageConverter{Resolver: resolver, Channel: chRef, Verbose: ctx.ResolveJSONVerbose(c.Verbose, c.Compact)}
 		ordered := reverseMessages(history.Messages)
 		records := conv.ConvertAll(ordered)
 		if c.JSONL {
