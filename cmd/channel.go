@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/lox/slack-cli/internal/slack"
 )
@@ -42,6 +43,10 @@ type ChannelReadCmd struct {
 	Channel  string `arg:"" help:"Channel name, ID, or Slack URL"`
 	Limit    int    `help:"Number of messages to show" default:"20"`
 	Markdown bool   `help:"Output as markdown" short:"m"`
+	After    string `help:"Only show messages on or after DATE (YYYY-MM-DD, UTC)" xor:"after-last,after-on"`
+	Before   string `help:"Only show messages on or before DATE (YYYY-MM-DD, UTC)" xor:"before-on"`
+	On       string `help:"Only show messages on DATE (YYYY-MM-DD, UTC)" xor:"after-on,before-on,on-last"`
+	Last     string `help:"Only show messages from the last DURATION (e.g. 45d, 12h, 2w)" xor:"after-last,on-last"`
 }
 
 func (c *ChannelReadCmd) Run(ctx *Context) error {
@@ -55,6 +60,11 @@ func (c *ChannelReadCmd) Run(ctx *Context) error {
 		return err
 	}
 	resolver := slack.NewResolver(client)
+
+	filter, err := slack.ResolveDateFilter(c.After, c.Before, c.On, c.Last, time.Now())
+	if err != nil {
+		return err
+	}
 
 	// Resolve channel name to ID if needed
 	if !isSlackChannelID(channelID) {
@@ -71,7 +81,14 @@ func (c *ChannelReadCmd) Run(ctx *Context) error {
 		}
 	}
 
-	history, err := client.GetConversationHistory(channelID, c.Limit)
+	oldest, latest := filter.ToTimestampParams()
+	history, err := client.GetConversationHistory(slack.HistoryParams{
+		Channel:   channelID,
+		Limit:     c.Limit,
+		Oldest:    oldest,
+		Latest:    latest,
+		Inclusive: !filter.IsZero(),
+	})
 	if err != nil {
 		err = ctx.augmentChannelNotFoundError(urlHint, err)
 		err = ctx.augmentCrossWorkspaceChannelHint(urlHint, err)

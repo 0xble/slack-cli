@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/lox/slack-cli/internal/slack"
 )
@@ -17,6 +18,10 @@ type ThreadReadCmd struct {
 	Timestamp string `help:"Thread timestamp" short:"t"`
 	Limit     int    `help:"Maximum number of replies" default:"100"`
 	Markdown  bool   `help:"Output as markdown" short:"m"`
+	After     string `help:"Only show replies on or after DATE (YYYY-MM-DD, UTC)" xor:"after-last,after-on"`
+	Before    string `help:"Only show replies on or before DATE (YYYY-MM-DD, UTC)" xor:"before-on"`
+	On        string `help:"Only show replies on DATE (YYYY-MM-DD, UTC)" xor:"after-on,before-on,on-last"`
+	Last      string `help:"Only show replies from the last DURATION (e.g. 45d, 12h, 2w)" xor:"after-last,on-last"`
 }
 
 func (c *ThreadReadCmd) Run(ctx *Context) error {
@@ -35,13 +40,26 @@ func (c *ThreadReadCmd) Run(ctx *Context) error {
 		return fmt.Errorf("provide either a thread URL or --channel and --timestamp")
 	}
 
+	filter, err := slack.ResolveDateFilter(c.After, c.Before, c.On, c.Last, time.Now())
+	if err != nil {
+		return err
+	}
+
 	client, err := ctx.NewClient(c.URL)
 	if err != nil {
 		return err
 	}
 	resolver := slack.NewResolver(client)
 
-	replies, err := client.GetConversationReplies(channelID, threadTS, c.Limit)
+	oldest, latest := filter.ToTimestampParams()
+	replies, err := client.GetConversationReplies(slack.RepliesParams{
+		Channel:   channelID,
+		ThreadTS:  threadTS,
+		Limit:     c.Limit,
+		Oldest:    oldest,
+		Latest:    latest,
+		Inclusive: !filter.IsZero(),
+	})
 	if err != nil {
 		err = c.augmentReadError(ctx, err)
 		return fmt.Errorf("failed to get thread: %w", err)
