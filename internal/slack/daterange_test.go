@@ -126,6 +126,38 @@ func TestDateFilter_ToTimestampParams(t *testing.T) {
 	}
 }
 
+func TestDateFilter_ToTimestampParams_PreservesMicroseconds(t *testing.T) {
+	f, err := ResolveDateFilter("", "2026-04-15", "", "", refNow)
+	if err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	_, latest := f.ToTimestampParams()
+	// An inclusive end-of-day bound must retain sub-second precision so
+	// messages at 23:59:59.xxxxxx are not excluded.
+	if !strings.Contains(latest, ".") {
+		t.Fatalf("expected fractional seconds in latest, got %q", latest)
+	}
+	if !strings.HasSuffix(latest, ".999999") {
+		t.Fatalf("expected latest to end at .999999 for inclusive end-of-day, got %q", latest)
+	}
+}
+
+func TestValidateSearchLast_RejectsSubDay(t *testing.T) {
+	for _, last := range []string{"12h", "30m", "45s", "0.5d"} {
+		if err := ValidateSearchLast(last); err == nil {
+			t.Fatalf("expected ValidateSearchLast(%q) to reject", last)
+		}
+	}
+}
+
+func TestValidateSearchLast_AcceptsDayPlus(t *testing.T) {
+	for _, last := range []string{"", "24h", "1d", "7d", "2w", "48h"} {
+		if err := ValidateSearchLast(last); err != nil {
+			t.Fatalf("expected ValidateSearchLast(%q) to pass, got %v", last, err)
+		}
+	}
+}
+
 func TestDateFilter_ToSearchOperators(t *testing.T) {
 	f, err := ResolveDateFilter("2026-04-01", "2026-04-15", "", "", refNow)
 	if err != nil {
