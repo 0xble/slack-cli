@@ -80,6 +80,30 @@ func TestToUser(t *testing.T) {
 	}
 }
 
+func TestChannelRefFromIDFallsBackToIDPrefix(t *testing.T) {
+	tests := []struct {
+		id   string
+		want string
+	}{
+		{"C1", "channel"},
+		{"G1", "mpim"},
+		{"D1", "im"},
+	}
+	for _, tt := range tests {
+		ref := ChannelRefFromID(nil, tt.id, "")
+		if ref.ID != tt.id || ref.Type != tt.want {
+			t.Fatalf("ChannelRefFromID(nil, %q) = %+v, want type %q", tt.id, ref, tt.want)
+		}
+	}
+}
+
+func TestChannelRefFromIDPreservesNameHint(t *testing.T) {
+	ref := ChannelRefFromID(nil, "C1", "general")
+	if ref.Name != "general" {
+		t.Fatalf("expected name hint preserved, got %+v", ref)
+	}
+}
+
 func TestToFileRef(t *testing.T) {
 	f := slack.File{
 		ID:        "F1",
