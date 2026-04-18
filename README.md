@@ -152,7 +152,12 @@ is one of `channel`, `private_channel`, `im`, or `mpim`.
 
 Pass `--verbose` (`-V`) to restore the full shape: `type`, `text_raw`,
 and the scope `channel` / `thread_ts` come back for consumers that want
-the wire-complete record.
+the wire-complete record. Pass `--compact` (`-C`) to force the trimmed
+shape.
+
+To flip the default across all commands, set `default_json_mode` in
+`~/.config/slack-cli/config.json` to `"verbose"` or `"compact"`.
+`--verbose` / `--compact` always win over the config default.
 
 ### Authentication
 

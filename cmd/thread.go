@@ -20,7 +20,8 @@ type ThreadReadCmd struct {
 	Markdown  bool   `help:"Output as markdown" short:"m" xor:"format"`
 	JSON      bool   `help:"Output as pretty JSON array, parent first" short:"j" xor:"format"`
 	JSONL     bool   `help:"Output as JSON Lines, parent first" xor:"format"`
-	Verbose   bool   `help:"Emit full JSON records (restore type, text_raw, scope channel, and scope thread_ts)" short:"V"`
+	Verbose   bool   `help:"Emit full JSON records (restore type, text_raw, scope channel, and scope thread_ts). Overrides default_json_mode." short:"V" xor:"detail"`
+	Compact   bool   `help:"Emit trimmed JSON records (drop redundant fields). Overrides default_json_mode." short:"C" xor:"detail"`
 }
 
 func (c *ThreadReadCmd) Run(ctx *Context) error {
@@ -58,13 +59,14 @@ func (c *ThreadReadCmd) Run(ctx *Context) error {
 				workspace = host
 			}
 		}
+		verbose := ctx.ResolveJSONVerbose(c.Verbose, c.Compact)
 		chRef := output.ChannelRefFromID(resolver, channelID, "")
-		conv := output.MessageConverter{Resolver: resolver, Channel: chRef, Workspace: workspace, Verbose: c.Verbose}
+		conv := output.MessageConverter{Resolver: resolver, Channel: chRef, Workspace: workspace, Verbose: verbose}
 		// thread_ts on every record just restates the command scope in compact
 		// mode, so drop it post-convert when we are not emitting the full shape.
 		convertOne := func(m slack.Message) output.Message {
 			rec := conv.Convert(m)
-			if !c.Verbose {
+			if !verbose {
 				rec.ThreadTS = ""
 			}
 			return rec
