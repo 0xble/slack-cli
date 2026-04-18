@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/lox/slack-cli/internal/output"
 	"github.com/lox/slack-cli/internal/slack"
 )
 
@@ -16,7 +17,9 @@ type ThreadReadCmd struct {
 	Channel   string `help:"Channel ID" short:"c"`
 	Timestamp string `help:"Thread timestamp" short:"t"`
 	Limit     int    `help:"Maximum number of replies" default:"100"`
-	Markdown  bool   `help:"Output as markdown" short:"m"`
+	Markdown  bool   `help:"Output as markdown" short:"m" xor:"format"`
+	JSON      bool   `help:"Output as pretty JSON array, parent first" short:"j" xor:"format"`
+	JSONL     bool   `help:"Output as JSON Lines, parent first" xor:"format"`
 }
 
 func (c *ThreadReadCmd) Run(ctx *Context) error {
@@ -45,6 +48,25 @@ func (c *ThreadReadCmd) Run(ctx *Context) error {
 	if err != nil {
 		err = c.augmentReadError(ctx, err)
 		return fmt.Errorf("failed to get thread: %w", err)
+	}
+
+	if c.JSON || c.JSONL {
+		var workspace string
+		if c.URL != "" {
+			if host, _, herr := slack.ExtractWorkspaceRef(c.URL); herr == nil {
+				workspace = host
+			}
+		}
+		chRef := &output.ChannelRef{
+			ID:   channelID,
+			Type: output.ChannelTypeFromID(channelID),
+		}
+		conv := output.MessageConverter{Resolver: resolver, Channel: chRef, Workspace: workspace}
+		records := conv.ConvertAll(replies.Messages)
+		if c.JSONL {
+			return output.EmitJSONL(records)
+		}
+		return output.EmitJSON(records)
 	}
 
 	if c.Markdown {

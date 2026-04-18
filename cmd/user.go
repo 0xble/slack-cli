@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 
+	"github.com/lox/slack-cli/internal/output"
 	"github.com/lox/slack-cli/internal/slack"
 )
 
@@ -12,7 +13,9 @@ type UserCmd struct {
 }
 
 type UserListCmd struct {
-	Limit int `help:"Maximum number of users to list" default:"100"`
+	Limit int  `help:"Maximum number of users to list" default:"100"`
+	JSON  bool `help:"Output as pretty JSON array" short:"j" xor:"format"`
+	JSONL bool `help:"Output as JSON Lines, one user per line" xor:"format"`
 }
 
 func (c *UserListCmd) Run(ctx *Context) error {
@@ -23,6 +26,20 @@ func (c *UserListCmd) Run(ctx *Context) error {
 	resp, err := client.ListUsers(c.Limit)
 	if err != nil {
 		return fmt.Errorf("failed to list users: %w", err)
+	}
+
+	if c.JSON || c.JSONL {
+		records := make([]output.User, 0, len(resp.Members))
+		for _, user := range resp.Members {
+			if user.Deleted || user.IsBot {
+				continue
+			}
+			records = append(records, output.ToUser(user))
+		}
+		if c.JSONL {
+			return output.EmitJSONL(records)
+		}
+		return output.EmitJSON(records)
 	}
 
 	for _, user := range resp.Members {
@@ -41,6 +58,7 @@ func (c *UserListCmd) Run(ctx *Context) error {
 
 type UserInfoCmd struct {
 	User string `arg:"" help:"User ID or email"`
+	JSON bool   `help:"Output as JSON" short:"j"`
 }
 
 func (c *UserInfoCmd) Run(ctx *Context) error {
@@ -60,6 +78,10 @@ func (c *UserInfoCmd) Run(ctx *Context) error {
 
 	if err != nil {
 		return fmt.Errorf("failed to get user info: %w", err)
+	}
+
+	if c.JSON {
+		return output.EmitJSON(output.ToUser(*user))
 	}
 
 	fmt.Printf("Name: %s\n", user.RealName)

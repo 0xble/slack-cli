@@ -95,9 +95,26 @@ slack-cli view --help
 slack-cli search --help
 ```
 
+### Machine-readable output (--json / --jsonl)
+
+Most read, search, list, and info commands support `--json` (pretty array or
+object) and `--jsonl` (one record per line). Message records share a common
+shape with `ts`, `user`, `user_id`, `text` (formatted), `text_raw` (unresolved),
+`channel.{id,name,type}`, `workspace`, and `permalink` (when available).
+
+```bash
+slack-cli search "deploy" --limit 20 --jsonl | jq -c 'select(.channel.type == "channel")'
+slack-cli channel read #general --limit 50 --json
+slack-cli thread read "$URL" --json
+slack-cli channel list --json
+slack-cli user list --json
+slack-cli channel info C123 --json
+```
+
 ## Notes
 
-- Use `--markdown` with `view`, `thread read`, or `channel read` when you need structured output
+- Use `--markdown` with `view`, `thread read`, or `channel read` when you need structured terminal output
+- Use `--json` / `--jsonl` for agent consumption; `--jsonl` pipes cleanly into `jq -c`
 - Thread URLs with `thread_ts` parameter are automatically detected
 - Channel names can include or omit the `#` prefix
 - If you see `channel_not_found` and multiple workspaces are configured, retry with `--workspace <workspace>`

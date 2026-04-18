@@ -168,6 +168,27 @@ slack-cli user info U123                # Show user details
 slack-cli user info alice@acme.com      # Lookup by email
 ```
 
+### Machine-readable output
+
+Most read, search, list, and info commands accept `--json` (pretty JSON array
+or object) and `--jsonl` (one JSON object per line) for scripting and agent
+consumption.
+
+```bash
+slack-cli search "deploy" --limit 100 --jsonl | jq -c 'select(.channel.type == "channel")'
+slack-cli channel read #general --limit 50 --json
+slack-cli thread read <url> --json
+slack-cli channel list --json
+slack-cli user list --jsonl
+slack-cli channel info C123 --json
+slack-cli file info F123 --json
+```
+
+Message records share a common shape across `search`, `channel read`,
+`dm read`, and `thread read`: `ts`, `user`, `user_id`, `text` (formatted),
+`text_raw` (unresolved), `channel.{id,name,type}`, `workspace`, `permalink`
+(when available), and `reply_count`.
+
 ### Authentication
 
 ```bash

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/lox/slack-cli/internal/output"
 	"github.com/lox/slack-cli/internal/slack"
 )
 
@@ -14,7 +15,9 @@ type ChannelCmd struct {
 }
 
 type ChannelListCmd struct {
-	Limit int `help:"Maximum number of channels to list" default:"100"`
+	Limit int  `help:"Maximum number of channels to list" default:"100"`
+	JSON  bool `help:"Output as pretty JSON array" short:"j" xor:"format"`
+	JSONL bool `help:"Output as JSON Lines, one channel per line" xor:"format"`
 }
 
 func (c *ChannelListCmd) Run(ctx *Context) error {
@@ -25,6 +28,17 @@ func (c *ChannelListCmd) Run(ctx *Context) error {
 	resp, err := client.ListConversations("public_channel,private_channel", c.Limit)
 	if err != nil {
 		return fmt.Errorf("failed to list channels: %w", err)
+	}
+
+	if c.JSON || c.JSONL {
+		records := make([]output.Channel, 0, len(resp.Channels))
+		for _, ch := range resp.Channels {
+			records = append(records, output.ToChannel(ch))
+		}
+		if c.JSONL {
+			return output.EmitJSONL(records)
+		}
+		return output.EmitJSON(records)
 	}
 
 	for _, ch := range resp.Channels {
@@ -41,7 +55,9 @@ func (c *ChannelListCmd) Run(ctx *Context) error {
 type ChannelReadCmd struct {
 	Channel  string `arg:"" help:"Channel name, ID, or Slack URL"`
 	Limit    int    `help:"Number of messages to show" default:"20"`
-	Markdown bool   `help:"Output as markdown" short:"m"`
+	Markdown bool   `help:"Output as markdown" short:"m" xor:"format"`
+	JSON     bool   `help:"Output as pretty JSON array, oldest first" short:"j" xor:"format"`
+	JSONL    bool   `help:"Output as JSON Lines, oldest first" xor:"format"`
 }
 
 func (c *ChannelReadCmd) Run(ctx *Context) error {
@@ -56,6 +72,7 @@ func (c *ChannelReadCmd) Run(ctx *Context) error {
 	}
 	resolver := slack.NewResolver(client)
 
+	channelName := ""
 	// Resolve channel name to ID if needed
 	if !isSlackChannelID(channelID) {
 		// Try to find by name
@@ -65,6 +82,7 @@ func (c *ChannelReadCmd) Run(ctx *Context) error {
 		}
 		for _, ch := range resp.Channels {
 			if ch.Name == channelID {
+				channelName = ch.Name
 				channelID = ch.ID
 				break
 			}
@@ -76,6 +94,27 @@ func (c *ChannelReadCmd) Run(ctx *Context) error {
 		err = ctx.augmentChannelNotFoundError(urlHint, err)
 		err = ctx.augmentCrossWorkspaceChannelHint(urlHint, err)
 		return fmt.Errorf("failed to get channel history: %w", err)
+	}
+
+	if c.JSON || c.JSONL {
+		if channelName == "" {
+			channelName = resolver.ResolveChannel(channelID)
+			if channelName == channelID {
+				channelName = ""
+			}
+		}
+		chRef := &output.ChannelRef{
+			ID:   channelID,
+			Name: channelName,
+			Type: output.ChannelTypeFromID(channelID),
+		}
+		conv := output.MessageConverter{Resolver: resolver, Channel: chRef}
+		ordered := reverseMessages(history.Messages)
+		records := conv.ConvertAll(ordered)
+		if c.JSONL {
+			return output.EmitJSONL(records)
+		}
+		return output.EmitJSON(records)
 	}
 
 	if c.Markdown {
@@ -116,6 +155,7 @@ func (c *ChannelReadCmd) formatHistoryAsMarkdown(messages []slack.Message, resol
 
 type ChannelInfoCmd struct {
 	Channel string `arg:"" help:"Channel name, ID, or Slack URL"`
+	JSON    bool   `help:"Output as JSON" short:"j"`
 }
 
 func (c *ChannelInfoCmd) Run(ctx *Context) error {
@@ -147,6 +187,10 @@ func (c *ChannelInfoCmd) Run(ctx *Context) error {
 		err = ctx.augmentChannelNotFoundError(urlHint, err)
 		err = ctx.augmentCrossWorkspaceChannelHint(urlHint, err)
 		return fmt.Errorf("failed to get channel info: %w", err)
+	}
+
+	if c.JSON {
+		return output.EmitJSON(output.ToChannel(*info))
 	}
 
 	fmt.Printf("Name: #%s\n", info.Name)
@@ -182,4 +226,12 @@ func parseChannelReference(channel string) (channelID string, urlHint string, er
 
 func isSlackChannelID(channelID string) bool {
 	return strings.HasPrefix(channelID, "C") || strings.HasPrefix(channelID, "G") || strings.HasPrefix(channelID, "D")
+}
+
+func reverseMessages(messages []slack.Message) []slack.Message {
+	out := make([]slack.Message, len(messages))
+	for i, m := range messages {
+		out[len(messages)-1-i] = m
+	}
+	return out
 }
