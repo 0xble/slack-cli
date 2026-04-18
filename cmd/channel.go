@@ -97,17 +97,7 @@ func (c *ChannelReadCmd) Run(ctx *Context) error {
 	}
 
 	if c.JSON || c.JSONL {
-		if channelName == "" {
-			channelName = resolver.ResolveChannel(channelID)
-			if channelName == channelID {
-				channelName = ""
-			}
-		}
-		chRef := &output.ChannelRef{
-			ID:   channelID,
-			Name: channelName,
-			Type: output.ChannelTypeFromID(channelID),
-		}
+		chRef := output.ChannelRefFromID(resolver, channelID, channelName)
 		conv := output.MessageConverter{Resolver: resolver, Channel: chRef}
 		ordered := reverseMessages(history.Messages)
 		records := conv.ConvertAll(ordered)

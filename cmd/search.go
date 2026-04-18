@@ -84,12 +84,8 @@ func searchMatchToMessage(resolver *slack.Resolver, match slack.SearchMatch) out
 		User:   display,
 		UserID: match.User,
 		Text:   resolver.FormatText(match.Text),
-		TextRaw: match.Text,
-		Channel: &output.ChannelRef{
-			ID:   match.Channel.ID,
-			Name: match.Channel.Name,
-			Type: output.ChannelTypeFromID(match.Channel.ID),
-		},
+		TextRaw:   match.Text,
+		Channel:   output.ChannelRefFromID(resolver, match.Channel.ID, match.Channel.Name),
 		Workspace: workspace,
 		Permalink: match.Permalink,
 	}

@@ -10,18 +10,45 @@ import (
 // and formats message text by replacing mentions and emoji shortcodes.
 // Results are cached for the lifetime of the Resolver.
 type Resolver struct {
-	client       *Client
-	userCache    map[string]string
-	channelCache map[string]string
+	client           *Client
+	userCache        map[string]string
+	channelCache     map[string]string
+	channelInfoCache map[string]*Channel // nil value = negative cache
 }
 
 // NewResolver creates a Resolver that uses the given client for API lookups.
 func NewResolver(client *Client) *Resolver {
 	return &Resolver{
-		client:       client,
-		userCache:    make(map[string]string),
-		channelCache: make(map[string]string),
+		client:           client,
+		userCache:        make(map[string]string),
+		channelCache:     make(map[string]string),
+		channelInfoCache: make(map[string]*Channel),
 	}
+}
+
+// ResolveChannelInfo returns the full Channel record for the given ID,
+// cached for the Resolver's lifetime. Returns nil if the lookup fails
+// (for example because of missing scope or an unknown ID), which lets
+// callers fall back to best-effort inference.
+func (r *Resolver) ResolveChannelInfo(channelID string) *Channel {
+	if channelID == "" {
+		return nil
+	}
+	if info, ok := r.channelInfoCache[channelID]; ok {
+		return info
+	}
+
+	channel, err := r.client.GetConversationInfo(channelID)
+	if err != nil {
+		r.channelInfoCache[channelID] = nil
+		return nil
+	}
+
+	r.channelInfoCache[channelID] = channel
+	if channel.Name != "" {
+		r.channelCache[channelID] = channel.Name
+	}
+	return channel
 }
 
 // ResolveUser returns a display name for the given user ID.
