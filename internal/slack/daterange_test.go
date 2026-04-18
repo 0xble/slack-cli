@@ -228,6 +228,22 @@ func TestResolveSearchDateFilter_OnCannotCombine(t *testing.T) {
 	}
 }
 
+func TestValidateSearchLast_RejectsSubDay(t *testing.T) {
+	for _, last := range []string{"12h", "30m", "45s", "0.5d"} {
+		if err := ValidateSearchLast(last); err == nil {
+			t.Fatalf("expected ValidateSearchLast(%q) to reject", last)
+		}
+	}
+}
+
+func TestValidateSearchLast_AcceptsDayPlus(t *testing.T) {
+	for _, last := range []string{"", "24h", "1d", "7d", "2w", "48h"} {
+		if err := ValidateSearchLast(last); err != nil {
+			t.Fatalf("expected ValidateSearchLast(%q) to pass, got %v", last, err)
+		}
+	}
+}
+
 func TestDateFilter_ToSearchOperators(t *testing.T) {
 	f, err := ResolveDateFilter("2026-04-01", "2026-04-15", "", "", refNow)
 	if err != nil {
