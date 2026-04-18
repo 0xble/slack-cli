@@ -26,6 +26,10 @@ func (c *SearchCmd) Run(ctx *Context) error {
 		return err
 	}
 
+	if err := slack.ValidateSearchLast(c.Last); err != nil {
+		return err
+	}
+
 	query := c.Query
 	if !filter.IsZero() {
 		if slack.QueryHasDateOperator(query) {

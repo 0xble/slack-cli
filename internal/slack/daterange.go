@@ -91,13 +91,15 @@ func ResolveDateFilter(after, before, on, last string, now time.Time) (DateFilte
 
 // ToTimestampParams converts the filter into (oldest, latest) Slack
 // timestamp strings suitable for conversations.history / conversations.replies.
-// Empty string means "unset".
+// Empty string means "unset". Timestamps are emitted with microsecond
+// precision so an inclusive end-of-day bound like 23:59:59.999999999 does
+// not get truncated to the start of the last second.
 func (d DateFilter) ToTimestampParams() (oldest, latest string) {
 	if !d.After.IsZero() {
-		oldest = unixSeconds(d.After)
+		oldest = slackTimestamp(d.After)
 	}
 	if !d.Before.IsZero() {
-		latest = unixSeconds(d.Before)
+		latest = slackTimestamp(d.Before)
 	}
 	return oldest, latest
 }
@@ -117,6 +119,27 @@ func (d DateFilter) ToSearchOperators() string {
 		parts = append(parts, "before:"+d.Before.Add(24*time.Hour).UTC().Format("2006-01-02"))
 	}
 	return strings.Join(parts, " ")
+}
+
+// ValidateSearchLast rejects sub-day --last durations, which Slack's search
+// operators cannot express (they are calendar-date only). Callers of search
+// should invoke this before composing the query so a flag like --last 12h
+// fails loudly instead of silently broadening to a multi-day window.
+func ValidateSearchLast(last string) error {
+	last = strings.TrimSpace(last)
+	if last == "" {
+		return nil
+	}
+	dur, err := parseExtendedDuration(last)
+	if err != nil {
+		// Bad input is surfaced by ResolveDateFilter; no reason to
+		// double-report here.
+		return nil
+	}
+	if dur < 24*time.Hour {
+		return fmt.Errorf("search only supports day-precision windows; --last durations shorter than 24h cannot be expressed as a Slack search operator")
+	}
+	return nil
 }
 
 // QueryHasDateOperator reports whether the given search query already
@@ -168,6 +191,10 @@ func parseExtendedDuration(s string) (time.Duration, error) {
 	return time.ParseDuration(s)
 }
 
-func unixSeconds(t time.Time) string {
-	return strconv.FormatInt(t.Unix(), 10)
+// slackTimestamp formats t as a Slack seconds.microseconds string so
+// fractional bounds (e.g. 23:59:59.999999 for an inclusive end-of-day)
+// survive round-tripping through conversations.history params.
+func slackTimestamp(t time.Time) string {
+	micros := t.Nanosecond() / 1000
+	return fmt.Sprintf("%d.%06d", t.Unix(), micros)
 }
