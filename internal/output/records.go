@@ -6,10 +6,6 @@ import (
 	"github.com/lox/slack-cli/internal/slack"
 )
 
-// Shared record shapes for --json / --jsonl output. Deliberately independent
-// from the Slack wire types so the CLI's public JSON contract does not shift
-// when upstream API fields change.
-
 // Message is the common shape emitted by search, channel read, and thread
 // read. Callers populate whichever fields apply to their source.
 type Message struct {
@@ -125,24 +121,17 @@ func ToChannelRef(ch slack.Channel) *ChannelRef {
 	}
 }
 
-// ChannelRefFromID builds a ChannelRef for a known channel ID. If resolver is
-// non-nil it looks up the full Channel record (cached) and uses its
-// public/private flags to produce an accurate type; otherwise it falls back to
-// best-effort inference from the ID prefix. nameHint is used when the caller
-// already knows the channel name and wants to avoid a second lookup.
-func ChannelRefFromID(resolver *slack.Resolver, channelID, nameHint string) *ChannelRef {
-	ref := &ChannelRef{ID: channelID, Name: nameHint}
-	if resolver != nil {
-		if info := resolver.ResolveChannelInfo(channelID); info != nil {
-			ref.Type = ChannelTypeFor(*info)
-			if ref.Name == "" {
-				ref.Name = info.Name
-			}
-			return ref
-		}
+// ChannelRefFromID builds a ChannelRef for a known channel ID using the
+// name already known by the caller and a prefix-based type inference. It
+// deliberately avoids a live API lookup so it is safe to call from hot
+// paths like search and read where the channel record is not readily
+// available.
+func ChannelRefFromID(channelID, name string) *ChannelRef {
+	return &ChannelRef{
+		ID:   channelID,
+		Name: name,
+		Type: ChannelTypeFromID(channelID),
 	}
-	ref.Type = ChannelTypeFromID(channelID)
-	return ref
 }
 
 // ToUser converts a slack.User wire type into the public User record.

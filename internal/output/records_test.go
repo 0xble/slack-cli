@@ -90,17 +90,17 @@ func TestChannelRefFromIDFallsBackToIDPrefix(t *testing.T) {
 		{"D1", "im"},
 	}
 	for _, tt := range tests {
-		ref := ChannelRefFromID(nil, tt.id, "")
+		ref := ChannelRefFromID(tt.id, "")
 		if ref.ID != tt.id || ref.Type != tt.want {
-			t.Fatalf("ChannelRefFromID(nil, %q) = %+v, want type %q", tt.id, ref, tt.want)
+			t.Fatalf("ChannelRefFromID(%q) = %+v, want type %q", tt.id, ref, tt.want)
 		}
 	}
 }
 
-func TestChannelRefFromIDPreservesNameHint(t *testing.T) {
-	ref := ChannelRefFromID(nil, "C1", "general")
+func TestChannelRefFromIDPreservesName(t *testing.T) {
+	ref := ChannelRefFromID("C1", "general")
 	if ref.Name != "general" {
-		t.Fatalf("expected name hint preserved, got %+v", ref)
+		t.Fatalf("expected name preserved, got %+v", ref)
 	}
 }
 

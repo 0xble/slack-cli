@@ -1,5 +1,3 @@
-// Package output provides stdout formatters for human, markdown, and
-// machine-readable (JSON / JSONL) renderings.
 package output
 
 import (
@@ -18,6 +16,27 @@ func EmitJSON(v any) error {
 // stdout. Compact, lossless, pipeable to `jq -c`.
 func EmitJSONL[T any](items []T) error {
 	return writeJSONL(os.Stdout, items)
+}
+
+// EmitJSONLStream writes one record per line by repeatedly calling next until
+// it reports done (ok=false). It avoids buffering the full slice in memory,
+// which matters for paginated sources. When next returns an error, that
+// error is wrapped and returned.
+func EmitJSONLStream[T any](next func() (T, bool, error)) error {
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetEscapeHTML(false)
+	for {
+		item, ok, err := next()
+		if err != nil {
+			return fmt.Errorf("encoding jsonl: %w", err)
+		}
+		if !ok {
+			return nil
+		}
+		if err := enc.Encode(item); err != nil {
+			return fmt.Errorf("encoding jsonl: %w", err)
+		}
+	}
 }
 
 func writeJSON(w io.Writer, v any) error {

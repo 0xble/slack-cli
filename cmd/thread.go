@@ -57,13 +57,20 @@ func (c *ThreadReadCmd) Run(ctx *Context) error {
 				workspace = host
 			}
 		}
-		chRef := output.ChannelRefFromID(resolver, channelID, "")
+		chRef := output.ChannelRefFromID(channelID, "")
 		conv := output.MessageConverter{Resolver: resolver, Channel: chRef, Workspace: workspace}
-		records := conv.ConvertAll(replies.Messages)
 		if c.JSONL {
-			return output.EmitJSONL(records)
+			i := 0
+			return output.EmitJSONLStream(func() (output.Message, bool, error) {
+				if i >= len(replies.Messages) {
+					return output.Message{}, false, nil
+				}
+				m := conv.Convert(replies.Messages[i])
+				i++
+				return m, true, nil
+			})
 		}
-		return output.EmitJSON(records)
+		return output.EmitJSON(conv.ConvertAll(replies.Messages))
 	}
 
 	if c.Markdown {

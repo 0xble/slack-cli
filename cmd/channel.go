@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/lox/slack-cli/internal/output"
@@ -30,13 +31,22 @@ func (c *ChannelListCmd) Run(ctx *Context) error {
 		return fmt.Errorf("failed to list channels: %w", err)
 	}
 
-	if c.JSON || c.JSONL {
+	if c.JSONL {
+		i := 0
+		return output.EmitJSONLStream(func() (output.Channel, bool, error) {
+			if i >= len(resp.Channels) {
+				return output.Channel{}, false, nil
+			}
+			ch := output.ToChannel(resp.Channels[i])
+			i++
+			return ch, true, nil
+		})
+	}
+
+	if c.JSON {
 		records := make([]output.Channel, 0, len(resp.Channels))
 		for _, ch := range resp.Channels {
 			records = append(records, output.ToChannel(ch))
-		}
-		if c.JSONL {
-			return output.EmitJSONL(records)
 		}
 		return output.EmitJSON(records)
 	}
@@ -97,14 +107,22 @@ func (c *ChannelReadCmd) Run(ctx *Context) error {
 	}
 
 	if c.JSON || c.JSONL {
-		chRef := output.ChannelRefFromID(resolver, channelID, channelName)
+		chRef := output.ChannelRefFromID(channelID, channelName)
 		conv := output.MessageConverter{Resolver: resolver, Channel: chRef}
-		ordered := reverseMessages(history.Messages)
-		records := conv.ConvertAll(ordered)
+		ordered := slices.Clone(history.Messages)
+		slices.Reverse(ordered)
 		if c.JSONL {
-			return output.EmitJSONL(records)
+			i := 0
+			return output.EmitJSONLStream(func() (output.Message, bool, error) {
+				if i >= len(ordered) {
+					return output.Message{}, false, nil
+				}
+				m := conv.Convert(ordered[i])
+				i++
+				return m, true, nil
+			})
 		}
-		return output.EmitJSON(records)
+		return output.EmitJSON(conv.ConvertAll(ordered))
 	}
 
 	if c.Markdown {
@@ -218,10 +236,3 @@ func isSlackChannelID(channelID string) bool {
 	return strings.HasPrefix(channelID, "C") || strings.HasPrefix(channelID, "G") || strings.HasPrefix(channelID, "D")
 }
 
-func reverseMessages(messages []slack.Message) []slack.Message {
-	out := make([]slack.Message, len(messages))
-	for i, m := range messages {
-		out[len(messages)-1-i] = m
-	}
-	return out
-}

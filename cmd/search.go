@@ -53,13 +53,21 @@ func (c *SearchCmd) Run(ctx *Context) error {
 }
 
 func (c *SearchCmd) emitStructured(resolver *slack.Resolver, resp *slack.SearchResponse) error {
+	if c.JSONL {
+		i := 0
+		return output.EmitJSONLStream(func() (output.Message, bool, error) {
+			if i >= len(resp.Messages.Matches) {
+				return output.Message{}, false, nil
+			}
+			m := searchMatchToMessage(resolver, resp.Messages.Matches[i])
+			i++
+			return m, true, nil
+		})
+	}
+
 	records := make([]output.Message, 0, len(resp.Messages.Matches))
 	for _, match := range resp.Messages.Matches {
 		records = append(records, searchMatchToMessage(resolver, match))
-	}
-
-	if c.JSONL {
-		return output.EmitJSONL(records)
 	}
 	return output.EmitJSON(records)
 }
@@ -90,7 +98,7 @@ func searchMatchToMessage(resolver *slack.Resolver, match slack.SearchMatch) out
 		UserID:    match.User,
 		Text:      text,
 		TextRaw:   match.Text,
-		Channel:   output.ChannelRefFromID(resolver, match.Channel.ID, match.Channel.Name),
+		Channel:   output.ChannelRefFromID(match.Channel.ID, match.Channel.Name),
 		Workspace: workspace,
 		Permalink: match.Permalink,
 	}

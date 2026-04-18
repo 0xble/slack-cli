@@ -28,16 +28,28 @@ func (c *UserListCmd) Run(ctx *Context) error {
 		return fmt.Errorf("failed to list users: %w", err)
 	}
 
-	if c.JSON || c.JSONL {
+	if c.JSONL {
+		i := 0
+		return output.EmitJSONLStream(func() (output.User, bool, error) {
+			for i < len(resp.Members) {
+				u := resp.Members[i]
+				i++
+				if u.Deleted || u.IsBot {
+					continue
+				}
+				return output.ToUser(u), true, nil
+			}
+			return output.User{}, false, nil
+		})
+	}
+
+	if c.JSON {
 		records := make([]output.User, 0, len(resp.Members))
 		for _, user := range resp.Members {
 			if user.Deleted || user.IsBot {
 				continue
 			}
 			records = append(records, output.ToUser(user))
-		}
-		if c.JSONL {
-			return output.EmitJSONL(records)
 		}
 		return output.EmitJSON(records)
 	}
