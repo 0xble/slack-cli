@@ -215,12 +215,42 @@ func (c *Client) AuthTest() (*AuthTestResponse, error) {
 	return &result, nil
 }
 
-func (c *Client) GetConversationReplies(channel, threadTS string, limit int) (*RepliesResponse, error) {
+// HistoryParams configures a conversations.history call.
+// Oldest/Latest are Slack timestamp strings; Inclusive sets whether the
+// endpoints are included in the result.
+type HistoryParams struct {
+	Channel   string
+	Limit     int
+	Oldest    string
+	Latest    string
+	Inclusive bool
+}
+
+// RepliesParams configures a conversations.replies call.
+type RepliesParams struct {
+	Channel   string
+	ThreadTS  string
+	Limit     int
+	Oldest    string
+	Latest    string
+	Inclusive bool
+}
+
+func (c *Client) GetConversationReplies(p RepliesParams) (*RepliesResponse, error) {
 	params := url.Values{}
-	params.Set("channel", channel)
-	params.Set("ts", threadTS)
-	if limit > 0 {
-		params.Set("limit", fmt.Sprintf("%d", limit))
+	params.Set("channel", p.Channel)
+	params.Set("ts", p.ThreadTS)
+	if p.Limit > 0 {
+		params.Set("limit", fmt.Sprintf("%d", p.Limit))
+	}
+	if p.Oldest != "" {
+		params.Set("oldest", p.Oldest)
+	}
+	if p.Latest != "" {
+		params.Set("latest", p.Latest)
+	}
+	if p.Inclusive {
+		params.Set("inclusive", "true")
 	}
 
 	body, err := c.request("conversations.replies", params)
@@ -236,11 +266,20 @@ func (c *Client) GetConversationReplies(channel, threadTS string, limit int) (*R
 	return &result, nil
 }
 
-func (c *Client) GetConversationHistory(channel string, limit int) (*HistoryResponse, error) {
+func (c *Client) GetConversationHistory(p HistoryParams) (*HistoryResponse, error) {
 	params := url.Values{}
-	params.Set("channel", channel)
-	if limit > 0 {
-		params.Set("limit", fmt.Sprintf("%d", limit))
+	params.Set("channel", p.Channel)
+	if p.Limit > 0 {
+		params.Set("limit", fmt.Sprintf("%d", p.Limit))
+	}
+	if p.Oldest != "" {
+		params.Set("oldest", p.Oldest)
+	}
+	if p.Latest != "" {
+		params.Set("latest", p.Latest)
+	}
+	if p.Inclusive {
+		params.Set("inclusive", "true")
 	}
 
 	body, err := c.request("conversations.history", params)
