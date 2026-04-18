@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/lox/slack-cli/internal/output"
 	"github.com/lox/slack-cli/internal/slack"
@@ -19,6 +20,10 @@ type CanvasListCmd struct {
 	Limit   int    `help:"Maximum number of canvases to list" default:"20" short:"n"`
 	JSON    bool   `help:"Output as pretty JSON array" short:"j" xor:"format"`
 	JSONL   bool   `help:"Output as JSON Lines, one canvas per line" xor:"format"`
+	After   string `help:"Only list canvases on or after DATE (YYYY-MM-DD, UTC)" xor:"after-last,after-on"`
+	Before  string `help:"Only list canvases on or before DATE (YYYY-MM-DD, UTC)" xor:"before-on"`
+	On      string `help:"Only list canvases on DATE (YYYY-MM-DD, UTC)" xor:"after-on,before-on,on-last"`
+	Last    string `help:"Only list canvases from the last DURATION (e.g. 45d, 12h, 2w)" xor:"after-last,on-last"`
 }
 
 func (c *CanvasListCmd) Run(ctx *Context) error {
@@ -32,15 +37,23 @@ func (c *CanvasListCmd) Run(ctx *Context) error {
 		return err
 	}
 
+	filter, err := slack.ResolveDateFilter(c.After, c.Before, c.On, c.Last, time.Now())
+	if err != nil {
+		return err
+	}
+
 	channelID, err := resolveCanvasChannelFilter(client, channelRef)
 	if err != nil {
 		return err
 	}
 
+	oldest, latest := filter.ToTimestampParams()
 	resp, err := client.ListFiles(slack.ListFilesParams{
 		Limit:     c.Limit,
 		Types:     "canvas",
 		ChannelID: channelID,
+		TSFrom:    oldest,
+		TSTo:      latest,
 	})
 	if err != nil {
 		err = withFilesReadScopeHint(err)

@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/lox/slack-cli/internal/output"
 	"github.com/lox/slack-cli/internal/slack"
@@ -65,6 +66,10 @@ type DmReadCmd struct {
 	Markdown  bool   `help:"Output as markdown" short:"m" xor:"format"`
 	JSON      bool   `help:"Output as pretty JSON array, oldest first" short:"j" xor:"format"`
 	JSONL     bool   `help:"Output as JSON Lines, oldest first" xor:"format"`
+	After     string `help:"Only show messages on or after DATE (YYYY-MM-DD, UTC)" xor:"after-last,after-on"`
+	Before    string `help:"Only show messages on or before DATE (YYYY-MM-DD, UTC)" xor:"before-on"`
+	On        string `help:"Only show messages on DATE (YYYY-MM-DD, UTC)" xor:"after-on,before-on,on-last"`
+	Last      string `help:"Only show messages from the last DURATION (e.g. 45d, 12h, 2w)" xor:"after-last,on-last"`
 }
 
 func (c *DmReadCmd) Run(ctx *Context) error {
@@ -79,7 +84,19 @@ func (c *DmReadCmd) Run(ctx *Context) error {
 		return err
 	}
 
-	history, err := client.GetConversationHistory(target.ChannelID, c.Limit)
+	filter, err := slack.ResolveDateFilter(c.After, c.Before, c.On, c.Last, time.Now())
+	if err != nil {
+		return err
+	}
+
+	oldest, latest := filter.ToTimestampParams()
+	history, err := client.GetConversationHistory(slack.HistoryParams{
+		Channel:   target.ChannelID,
+		Limit:     c.Limit,
+		Oldest:    oldest,
+		Latest:    latest,
+		Inclusive: !filter.IsZero(),
+	})
 	if err != nil {
 		return fmt.Errorf("failed to get DM history: %w", err)
 	}
