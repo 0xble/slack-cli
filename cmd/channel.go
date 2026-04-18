@@ -58,7 +58,7 @@ func (c *ChannelReadCmd) Run(ctx *Context) error {
 	}
 	resolver := slack.NewResolver(client)
 
-	filter, err := c.DateFilterFlags.Resolve(time.Now())
+	filter, err := c.Resolve(time.Now())
 	if err != nil {
 		return err
 	}

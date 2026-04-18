@@ -15,7 +15,7 @@ type SearchCmd struct {
 }
 
 func (c *SearchCmd) Run(ctx *Context) error {
-	filter, err := c.DateFilterFlags.Resolve(time.Now())
+	filter, err := c.Resolve(time.Now())
 	if err != nil {
 		return err
 	}

@@ -37,7 +37,7 @@ func (c *ThreadReadCmd) Run(ctx *Context) error {
 		return fmt.Errorf("provide either a thread URL or --channel and --timestamp")
 	}
 
-	filter, err := c.DateFilterFlags.Resolve(time.Now())
+	filter, err := c.Resolve(time.Now())
 	if err != nil {
 		return err
 	}
