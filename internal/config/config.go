@@ -23,7 +23,21 @@ type Config struct {
 	ClientSecret     string                   `json:"client_secret,omitempty"`
 	CurrentWorkspace string                   `json:"current_workspace,omitempty"`
 	Workspaces       map[string]WorkspaceAuth `json:"workspaces,omitempty"`
-	path             string
+	// DefaultJSONMode sets the default shape for --json / --jsonl output on
+	// message-reading commands (channel read, thread read, search).
+	// "compact" (drop scope-restating / duplicate fields) or "verbose"
+	// (emit every field). Empty or unrecognized -> "compact".
+	DefaultJSONMode string `json:"default_json_mode,omitempty"`
+	path            string
+}
+
+// JSONVerboseByDefault reports whether message JSON output should default to
+// the verbose shape when neither --verbose nor --compact was passed.
+func (c *Config) JSONVerboseByDefault() bool {
+	if c == nil {
+		return false
+	}
+	return strings.EqualFold(strings.TrimSpace(c.DefaultJSONMode), "verbose")
 }
 
 func configPath() (string, error) {
