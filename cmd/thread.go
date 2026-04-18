@@ -58,7 +58,7 @@ func (c *ThreadReadCmd) Run(ctx *Context) error {
 				workspace = host
 			}
 		}
-		chRef := output.ChannelRefFromID(channelID, "")
+		chRef := output.ChannelRefFromID(resolver, channelID, "")
 		conv := output.MessageConverter{Resolver: resolver, Channel: chRef, Workspace: workspace, Verbose: c.Verbose}
 		// thread_ts on every record just restates the command scope in compact
 		// mode, so drop it post-convert when we are not emitting the full shape.

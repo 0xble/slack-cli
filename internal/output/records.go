@@ -121,17 +121,27 @@ func ToChannelRef(ch slack.Channel) *ChannelRef {
 	}
 }
 
-// ChannelRefFromID builds a ChannelRef for a known channel ID using the
-// name already known by the caller and a prefix-based type inference. It
-// deliberately avoids a live API lookup so it is safe to call from hot
-// paths like search and read where the channel record is not readily
-// available.
-func ChannelRefFromID(channelID, name string) *ChannelRef {
-	return &ChannelRef{
-		ID:   channelID,
-		Name: name,
-		Type: ChannelTypeFromID(channelID),
+// ChannelRefFromID builds a ChannelRef for a known channel ID. When resolver
+// is non-nil it does a cached conversations.info lookup to produce an
+// accurate type (public/private/mpim) from the full channel record, since
+// the ID prefix alone cannot disambiguate modern C-prefixed public vs
+// private channels. If the lookup fails or resolver is nil it falls back
+// to prefix-based inference, which leaves the type empty for ambiguous
+// prefixes. nameHint is used when the caller already knows the channel
+// name and wants to avoid a redundant lookup.
+func ChannelRefFromID(resolver *slack.Resolver, channelID, nameHint string) *ChannelRef {
+	ref := &ChannelRef{ID: channelID, Name: nameHint}
+	if resolver != nil {
+		if info := resolver.ResolveChannelInfo(channelID); info != nil {
+			ref.Type = ChannelTypeFor(*info)
+			if ref.Name == "" {
+				ref.Name = info.Name
+			}
+			return ref
+		}
 	}
+	ref.Type = ChannelTypeFromID(channelID)
+	return ref
 }
 
 // ToUser converts a slack.User wire type into the public User record.

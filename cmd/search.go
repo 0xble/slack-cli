@@ -98,7 +98,7 @@ func searchMatchToMessage(resolver *slack.Resolver, match slack.SearchMatch, ver
 		User:      display,
 		UserID:    match.User,
 		Text:      text,
-		Channel:   output.ChannelRefFromID(match.Channel.ID, match.Channel.Name),
+		Channel:   output.ChannelRefFromID(resolver, match.Channel.ID, match.Channel.Name),
 		Workspace: workspace,
 		Permalink: match.Permalink,
 	}

@@ -108,7 +108,7 @@ func (c *ChannelReadCmd) Run(ctx *Context) error {
 	}
 
 	if c.JSON || c.JSONL {
-		chRef := output.ChannelRefFromID(channelID, channelName)
+		chRef := output.ChannelRefFromID(resolver, channelID, channelName)
 		conv := output.MessageConverter{Resolver: resolver, Channel: chRef, Verbose: c.Verbose}
 		ordered := slices.Clone(history.Messages)
 		slices.Reverse(ordered)
