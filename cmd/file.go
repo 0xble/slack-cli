@@ -20,9 +20,13 @@ type FileCmd struct {
 }
 
 type FileListCmd struct {
-	Limit int  `help:"Maximum number of files to list" default:"20" short:"n"`
-	JSON  bool `help:"Output as pretty JSON array" short:"j" xor:"format"`
-	JSONL bool `help:"Output as JSON Lines, one file per line" xor:"format"`
+	Limit  int    `help:"Maximum number of files to list" default:"20" short:"n"`
+	JSON   bool   `help:"Output as pretty JSON array" short:"j" xor:"format"`
+	JSONL  bool   `help:"Output as JSON Lines, one file per line" xor:"format"`
+	After  string `help:"Only list files on or after DATE (YYYY-MM-DD, UTC)" xor:"after-last,after-on"`
+	Before string `help:"Only list files on or before DATE (YYYY-MM-DD, UTC)" xor:"before-on"`
+	On     string `help:"Only list files on DATE (YYYY-MM-DD, UTC)" xor:"after-on,before-on,on-last"`
+	Last   string `help:"Only list files from the last DURATION (e.g. 45d, 12h, 2w)" xor:"after-last,on-last"`
 }
 
 func (c *FileListCmd) Run(ctx *Context) error {
@@ -31,7 +35,12 @@ func (c *FileListCmd) Run(ctx *Context) error {
 		return err
 	}
 
-	resp, err := client.ListFiles(slack.ListFilesParams{Limit: c.Limit})
+	filter, err := slack.ResolveDateFilter(c.After, c.Before, c.On, c.Last, time.Now())
+	if err != nil {
+		return err
+	}
+	oldest, latest := filter.ToTimestampParams()
+	resp, err := client.ListFiles(slack.ListFilesParams{Limit: c.Limit, TSFrom: oldest, TSTo: latest})
 	if err != nil {
 		return fmt.Errorf("failed to list files: %w", err)
 	}

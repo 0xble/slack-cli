@@ -357,6 +357,8 @@ type ListFilesParams struct {
 	Limit     int
 	Types     string
 	ChannelID string
+	TSFrom    string
+	TSTo      string
 }
 
 func (c *Client) ListFiles(params ListFilesParams) (*FilesListResponse, error) {
@@ -369,6 +371,12 @@ func (c *Client) ListFiles(params ListFilesParams) (*FilesListResponse, error) {
 	}
 	if strings.TrimSpace(params.ChannelID) != "" {
 		values.Set("channel", strings.TrimSpace(params.ChannelID))
+	}
+	if strings.TrimSpace(params.TSFrom) != "" {
+		values.Set("ts_from", strings.TrimSpace(params.TSFrom))
+	}
+	if strings.TrimSpace(params.TSTo) != "" {
+		values.Set("ts_to", strings.TrimSpace(params.TSTo))
 	}
 
 	body, err := c.request("files.list", values)
