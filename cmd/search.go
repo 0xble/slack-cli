@@ -21,6 +21,12 @@ func (c *SearchCmd) Run(ctx *Context) error {
 		return err
 	}
 	resolver := slack.NewResolver(client)
+	// Preload the channel list in one call so per-match channel.type
+	// population on the JSON path does not fan out to N+1
+	// conversations.info requests across N distinct result channels.
+	if c.JSON || c.JSONL {
+		resolver.PreloadChannels("public_channel,private_channel,mpim,im")
+	}
 	resp, err := client.SearchMessages(c.Query, c.Limit)
 	if err != nil {
 		return fmt.Errorf("search failed: %w", err)

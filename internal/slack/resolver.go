@@ -26,6 +26,29 @@ func NewResolver(client *Client) *Resolver {
 	}
 }
 
+// PreloadChannels fetches the full conversations list in one call and
+// populates the channel info cache so later ResolveChannelInfo /
+// ResolveChannel / ChannelRefFromID calls do not trigger per-channel API
+// lookups. Callers use this on hot paths (e.g. search results spanning
+// many channels) to turn an N+1 pattern into a single request. Failures
+// are silent — callers fall back to lazy per-channel lookups.
+func (r *Resolver) PreloadChannels(types string) {
+	if r.client == nil {
+		return
+	}
+	resp, err := r.client.ListConversations(types, 1000)
+	if err != nil {
+		return
+	}
+	for i := range resp.Channels {
+		ch := resp.Channels[i]
+		r.channelInfoCache[ch.ID] = &ch
+		if ch.Name != "" {
+			r.channelCache[ch.ID] = ch.Name
+		}
+	}
+}
+
 // ResolveChannelInfo returns the full Channel record for the given ID,
 // cached for the Resolver's lifetime. Returns nil if the lookup fails
 // (for example because of missing scope or an unknown ID), which lets
