@@ -81,7 +81,11 @@ func ChannelTypeFor(ch slack.Channel) string {
 }
 
 // ChannelTypeFromID infers a type tag from a raw Slack channel/DM ID prefix.
-// Useful for contexts like search where only the ID is known.
+// Useful for contexts like search where only the ID is known. `G` IDs are
+// intentionally returned as an empty tag: they cover multi-party IMs and
+// legacy private channels, and the prefix alone cannot disambiguate. Callers
+// that need the distinction should resolve the full slack.Channel and use
+// ChannelTypeFor.
 func ChannelTypeFromID(id string) string {
 	if len(id) == 0 {
 		return ""
@@ -89,8 +93,6 @@ func ChannelTypeFromID(id string) string {
 	switch id[0] {
 	case 'D':
 		return "im"
-	case 'G':
-		return "mpim"
 	case 'C':
 		return "channel"
 	default:

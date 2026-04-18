@@ -33,7 +33,9 @@ func TestChannelTypeFromID(t *testing.T) {
 	tests := map[string]string{
 		"":     "",
 		"C123": "channel",
-		"G123": "mpim",
+		// G-prefixed IDs cover both mpim and legacy private channels; ID
+		// alone is ambiguous, so we return empty rather than guessing.
+		"G123": "",
 		"D123": "im",
 		"U123": "",
 	}
@@ -86,7 +88,9 @@ func TestChannelRefFromIDFallsBackToIDPrefix(t *testing.T) {
 		want string
 	}{
 		{"C1", "channel"},
-		{"G1", "mpim"},
+		// G IDs cover both mpim and legacy private channels, so the ID
+		// prefix alone cannot disambiguate; the type stays empty.
+		{"G1", ""},
 		{"D1", "im"},
 	}
 	for _, tt := range tests {
