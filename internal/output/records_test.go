@@ -32,11 +32,13 @@ func TestChannelTypeFor(t *testing.T) {
 func TestChannelTypeFromID(t *testing.T) {
 	tests := map[string]string{
 		"":     "",
-		"C123": "channel",
-		// G-prefixed IDs cover both mpim and legacy private channels; ID
-		// alone is ambiguous, so we return empty rather than guessing.
-		"G123": "",
 		"D123": "im",
+		// Everything other than D is ambiguous from the ID prefix alone:
+		// C covers public and private channels, G covers mpim and legacy
+		// private channels. Callers must resolve the full slack.Channel
+		// when they need the distinction.
+		"C123": "",
+		"G123": "",
 		"U123": "",
 	}
 	for in, want := range tests {
@@ -87,11 +89,12 @@ func TestChannelRefFromIDFallsBackToIDPrefix(t *testing.T) {
 		id   string
 		want string
 	}{
-		{"C1", "channel"},
-		// G IDs cover both mpim and legacy private channels, so the ID
-		// prefix alone cannot disambiguate; the type stays empty.
-		{"G1", ""},
+		// Only D IDs are unambiguous. C and G IDs cover multiple
+		// conversation kinds so the type stays empty until a full
+		// slack.Channel is resolved.
 		{"D1", "im"},
+		{"C1", ""},
+		{"G1", ""},
 	}
 	for _, tt := range tests {
 		ref := ChannelRefFromID(tt.id, "")

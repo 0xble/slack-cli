@@ -29,8 +29,8 @@ func TestSearchMatchToMessage_PureFields(t *testing.T) {
 	if got.Channel == nil || got.Channel.ID != "C1" || got.Channel.Name != "general" {
 		t.Fatalf("expected channel populated: %+v", got.Channel)
 	}
-	if got.Channel.Type != "channel" {
-		t.Fatalf("expected channel.type from ID prefix, got %q", got.Channel.Type)
+	if got.Channel.Type != "" {
+		t.Fatalf("expected empty channel.type for C-prefixed ID without resolver, got %q", got.Channel.Type)
 	}
 	if got.Workspace != "example.slack.com" {
 		t.Fatalf("expected workspace extracted from permalink, got %q", got.Workspace)
