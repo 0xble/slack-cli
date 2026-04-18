@@ -21,6 +21,7 @@ type ThreadReadCmd struct {
 	Markdown  bool   `help:"Output as markdown" short:"m" xor:"format"`
 	JSON      bool   `help:"Output as pretty JSON array, parent first" short:"j" xor:"format"`
 	JSONL     bool   `help:"Output as JSON Lines, parent first" xor:"format"`
+	Verbose   bool   `help:"Emit full JSON records (restore type, text_raw, scope channel, and scope thread_ts)" short:"V"`
 	After     string `help:"Only show replies on or after DATE (YYYY-MM-DD, UTC)" xor:"after-last,after-on"`
 	Before    string `help:"Only show replies on or before DATE (YYYY-MM-DD, UTC)" xor:"before-on"`
 	On        string `help:"Only show replies on DATE (YYYY-MM-DD, UTC)" xor:"after-on,before-on,on-last"`
@@ -76,8 +77,15 @@ func (c *ThreadReadCmd) Run(ctx *Context) error {
 			}
 		}
 		chRef := output.ChannelRefFromID(resolver, channelID, "")
-		conv := output.MessageConverter{Resolver: resolver, Channel: chRef, Workspace: workspace}
+		conv := output.MessageConverter{Resolver: resolver, Channel: chRef, Workspace: workspace, Verbose: c.Verbose}
 		records := conv.ConvertAll(replies.Messages)
+		if !c.Verbose {
+			// thread_ts on every record just restates the command scope; drop it
+			// so compact output stays focused on per-reply signal.
+			for i := range records {
+				records[i].ThreadTS = ""
+			}
+		}
 		if c.JSONL {
 			return output.EmitJSONL(records)
 		}

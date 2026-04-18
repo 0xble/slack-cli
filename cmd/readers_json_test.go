@@ -42,8 +42,44 @@ func TestDmReadCmdJSON(t *testing.T) {
 	if got[0].TS != "100.000001" || got[0].User != "Bob" {
 		t.Fatalf("expected oldest first, got: %+v", got[0])
 	}
+	// Default (compact) shape: scope channel and type/text_raw are omitted.
+	if got[0].Channel != nil {
+		t.Fatalf("expected scope channel to be omitted in compact shape, got: %+v", got[0].Channel)
+	}
+	if got[0].Type != "" || got[0].TextRaw != "" {
+		t.Fatalf("expected type/text_raw omitted in compact shape, got type=%q text_raw=%q", got[0].Type, got[0].TextRaw)
+	}
+}
+
+func TestDmReadCmdJSONVerbose(t *testing.T) {
+	ctx := testDMContext(func(req *http.Request) (*http.Response, error) {
+		switch req.URL.Path {
+		case "/api/conversations.history":
+			return dmJSONResponse(req, `{"ok":true,"messages":[{"user":"U123","text":"hi","ts":"200.000001","type":"message"}]}`)
+		case "/api/users.info":
+			return dmJSONResponse(req, `{"ok":true,"user":{"id":"U123","name":"alice","real_name":"Alice"}}`)
+		}
+		return nil, fmt.Errorf("unexpected path %s", req.URL.Path)
+	})
+
+	out := captureStdout(t, func() {
+		if err := (&DmReadCmd{Recipient: "D123", Limit: 20, JSON: true, Verbose: true}).Run(ctx); err != nil {
+			t.Fatalf("DmReadCmd.Run returned error: %v", err)
+		}
+	})
+
+	var got []output.Message
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("output is not valid JSON: %v\n%s", err, out)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(got))
+	}
 	if got[0].Channel == nil || got[0].Channel.ID != "D123" || got[0].Channel.Type != "im" {
-		t.Fatalf("expected DM channel ref, got: %+v", got[0].Channel)
+		t.Fatalf("expected scope channel restored in verbose, got: %+v", got[0].Channel)
+	}
+	if got[0].Type != "message" || got[0].TextRaw != "hi" {
+		t.Fatalf("expected type/text_raw restored in verbose, got type=%q text_raw=%q", got[0].Type, got[0].TextRaw)
 	}
 }
 
@@ -77,8 +113,9 @@ func TestChannelReadCmdJSONL(t *testing.T) {
 	if first.TS != "100.000000" {
 		t.Fatalf("expected oldest first in JSONL, got %q", first.TS)
 	}
-	if first.Channel == nil || first.Channel.Type != "channel" {
-		t.Fatalf("expected channel type, got %+v", first.Channel)
+	// Default (compact) shape: scope channel is omitted on channel read.
+	if first.Channel != nil {
+		t.Fatalf("expected scope channel to be omitted in compact shape, got %+v", first.Channel)
 	}
 }
 

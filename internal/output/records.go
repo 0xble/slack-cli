@@ -14,18 +14,19 @@ import (
 // Message is the common shape emitted by search, channel read, dm read, and
 // thread read. Callers populate whichever fields apply to their source.
 type Message struct {
-	TS         string       `json:"ts"`
-	ThreadTS   string       `json:"thread_ts,omitempty"`
-	Type       string       `json:"type,omitempty"`
-	User       string       `json:"user,omitempty"`
-	UserID     string       `json:"user_id,omitempty"`
-	Text       string       `json:"text"`
-	TextRaw    string       `json:"text_raw,omitempty"`
-	Channel    *ChannelRef  `json:"channel,omitempty"`
-	Workspace  string       `json:"workspace,omitempty"`
-	Permalink  string       `json:"permalink,omitempty"`
-	ReplyCount int          `json:"reply_count,omitempty"`
-	Files      []FileRef    `json:"files,omitempty"`
+	TS         string      `json:"ts"`
+	ThreadTS   string      `json:"thread_ts,omitempty"`
+	Type       string      `json:"type,omitempty"`
+	Subtype    string      `json:"subtype,omitempty"`
+	User       string      `json:"user,omitempty"`
+	UserID     string      `json:"user_id,omitempty"`
+	Text       string      `json:"text"`
+	TextRaw    string      `json:"text_raw,omitempty"`
+	Channel    *ChannelRef `json:"channel,omitempty"`
+	Workspace  string      `json:"workspace,omitempty"`
+	Permalink  string      `json:"permalink,omitempty"`
+	ReplyCount int         `json:"reply_count,omitempty"`
+	Files      []FileRef   `json:"files,omitempty"`
 }
 
 // ChannelRef is a short reference embedded in Message results. Full channel
@@ -51,7 +52,7 @@ type Channel struct {
 	ID         string `json:"id"`
 	Name       string `json:"name,omitempty"`
 	Type       string `json:"type"`
-	IsPrivate  bool   `json:"is_private"`
+	IsPrivate  bool   `json:"is_private,omitempty"`
 	IsArchived bool   `json:"is_archived,omitempty"`
 	NumMembers int    `json:"num_members,omitempty"`
 	Topic      string `json:"topic,omitempty"`
@@ -69,8 +70,8 @@ type User struct {
 	Email       string `json:"email,omitempty"`
 	Title       string `json:"title,omitempty"`
 	TZ          string `json:"tz,omitempty"`
-	IsBot       bool   `json:"is_bot"`
-	Deleted     bool   `json:"deleted"`
+	IsBot       bool   `json:"is_bot,omitempty"`
+	Deleted     bool   `json:"deleted,omitempty"`
 }
 
 // File is the shape emitted by file list, file info, canvas list, canvas read.
@@ -223,10 +224,18 @@ func ToFileRef(f slack.File) FileRef {
 // MessageConverter converts a slack.Message to the public Message record. It
 // needs a resolver for user display names and formatted text, plus optional
 // channel context for embedded references and workspace host for citations.
+//
+// Verbose controls the compact-vs-full shape: when false (the default),
+// fields that restate the command scope or duplicate other fields are
+// omitted — no Type, no TextRaw, and the scope Channel is dropped unless the
+// source message carries a per-record channel (e.g. search results). When
+// true, every field is populated as-is so consumers that want the full wire
+// shape can opt in.
 type MessageConverter struct {
 	Resolver  *slack.Resolver
 	Channel   *ChannelRef
 	Workspace string
+	Verbose   bool
 }
 
 // Convert turns one slack.Message into the public Message record.
@@ -253,25 +262,34 @@ func (mc MessageConverter) Convert(m slack.Message) Message {
 		}
 	}
 
-	ch := mc.Channel
-	if m.Channel != nil && (ch == nil || ch.ID == "") {
+	// Channel: prefer a per-record channel (search) when present. Otherwise
+	// fall back to the scope channel only in verbose mode so compact output
+	// does not restate the command argument on every record.
+	var ch *ChannelRef
+	if m.Channel != nil && m.Channel.ID != "" {
 		ch = &ChannelRef{ID: m.Channel.ID, Name: m.Channel.Name}
+	} else if mc.Verbose {
+		ch = mc.Channel
 	}
 
-	return Message{
+	rec := Message{
 		TS:         m.TS,
 		ThreadTS:   m.ThreadTS,
-		Type:       m.Type,
+		Subtype:    m.Subtype,
 		User:       display,
 		UserID:     userID,
 		Text:       text,
-		TextRaw:    m.Text,
 		Channel:    ch,
 		Workspace:  mc.Workspace,
 		Permalink:  m.Permalink,
 		ReplyCount: m.ReplyCount,
 		Files:      files,
 	}
+	if mc.Verbose {
+		rec.Type = m.Type
+		rec.TextRaw = m.Text
+	}
+	return rec
 }
 
 // ConvertAll converts a slice of slack.Message records in order.

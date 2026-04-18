@@ -10,14 +10,15 @@ import (
 )
 
 type SearchCmd struct {
-	Query  string `arg:"" help:"Search query (supports Slack search syntax: from:@user, in:#channel, etc.)"`
-	Limit  int    `help:"Maximum number of results" default:"20"`
-	JSON  bool   `help:"Output as pretty JSON array" short:"j" xor:"format"`
-	JSONL bool   `help:"Output as JSON Lines, one match per line" xor:"format"`
-	After  string `help:"Only match messages on or after DATE (YYYY-MM-DD, UTC)" xor:"after-last,after-on"`
-	Before string `help:"Only match messages on or before DATE (YYYY-MM-DD, UTC)" xor:"before-on"`
-	On     string `help:"Only match messages on DATE (YYYY-MM-DD, UTC)" xor:"after-on,before-on,on-last"`
-	Last   string `help:"Only match messages from the last DURATION (e.g. 45d, 12h, 2w)" xor:"after-last,on-last"`
+	Query   string `arg:"" help:"Search query (supports Slack search syntax: from:@user, in:#channel, etc.)"`
+	Limit   int    `help:"Maximum number of results" default:"20"`
+	JSON    bool   `help:"Output as pretty JSON array" short:"j" xor:"format"`
+	JSONL   bool   `help:"Output as JSON Lines, one match per line" xor:"format"`
+	Verbose bool   `help:"Emit full JSON records (restore type and text_raw)" short:"V"`
+	After   string `help:"Only match messages on or after DATE (YYYY-MM-DD, UTC)" xor:"after-last,after-on"`
+	Before  string `help:"Only match messages on or before DATE (YYYY-MM-DD, UTC)" xor:"before-on"`
+	On      string `help:"Only match messages on DATE (YYYY-MM-DD, UTC)" xor:"after-on,before-on,on-last"`
+	Last    string `help:"Only match messages from the last DURATION (e.g. 45d, 12h, 2w)" xor:"after-last,on-last"`
 }
 
 func (c *SearchCmd) Run(ctx *Context) error {
@@ -80,7 +81,7 @@ func (c *SearchCmd) Run(ctx *Context) error {
 func (c *SearchCmd) emitStructured(resolver *slack.Resolver, resp *slack.SearchResponse) error {
 	records := make([]output.Message, 0, len(resp.Messages.Matches))
 	for _, match := range resp.Messages.Matches {
-		records = append(records, searchMatchToMessage(resolver, match))
+		records = append(records, searchMatchToMessage(resolver, match, c.Verbose))
 	}
 
 	if c.JSONL {
@@ -89,7 +90,7 @@ func (c *SearchCmd) emitStructured(resolver *slack.Resolver, resp *slack.SearchR
 	return output.EmitJSON(records)
 }
 
-func searchMatchToMessage(resolver *slack.Resolver, match slack.SearchMatch) output.Message {
+func searchMatchToMessage(resolver *slack.Resolver, match slack.SearchMatch, verbose bool) output.Message {
 	var workspace string
 	if match.Permalink != "" {
 		host, _, err := slack.ExtractWorkspaceRef(match.Permalink)
@@ -103,15 +104,19 @@ func searchMatchToMessage(resolver *slack.Resolver, match slack.SearchMatch) out
 		display = resolver.ResolveUser(match.User)
 	}
 
-	return output.Message{
-		TS:     match.TS,
-		Type:   match.Type,
-		User:   display,
-		UserID: match.User,
-		Text:   resolver.FormatText(match.Text),
-		TextRaw:   match.Text,
+	rec := output.Message{
+		TS:        match.TS,
+		Subtype:   match.Subtype,
+		User:      display,
+		UserID:    match.User,
+		Text:      resolver.FormatText(match.Text),
 		Channel:   output.ChannelRefFromID(resolver, match.Channel.ID, match.Channel.Name),
 		Workspace: workspace,
 		Permalink: match.Permalink,
 	}
+	if verbose {
+		rec.Type = match.Type
+		rec.TextRaw = match.Text
+	}
+	return rec
 }

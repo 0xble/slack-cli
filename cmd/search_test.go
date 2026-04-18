@@ -76,13 +76,48 @@ func TestSearchCmdJSON(t *testing.T) {
 	if !strings.Contains(first.Text, "@Bob") {
 		t.Fatalf("expected resolved mention in text, got %q", first.Text)
 	}
-	if !strings.Contains(first.TextRaw, "<@U2>") {
-		t.Fatalf("expected raw mention preserved in text_raw, got %q", first.TextRaw)
+	// Default (compact) shape: text_raw is omitted. Verbose restores it.
+	if first.TextRaw != "" {
+		t.Fatalf("expected text_raw omitted in compact shape, got %q", first.TextRaw)
+	}
+	if first.Type != "" {
+		t.Fatalf("expected type omitted in compact shape, got %q", first.Type)
 	}
 
 	second := got[1]
 	if second.Channel.Type != "im" {
 		t.Fatalf("expected DM match channel type 'im', got %q", second.Channel.Type)
+	}
+}
+
+func TestSearchCmdJSONVerbose(t *testing.T) {
+	ctx := testDMContext(func(req *http.Request) (*http.Response, error) {
+		switch req.URL.Path {
+		case "/api/search.messages":
+			return dmJSONResponse(req, searchMatchResponse)
+		case "/api/users.info":
+			return dmJSONResponse(req, `{"ok":true,"user":{"id":"U2","name":"bob","real_name":"Bob"}}`)
+		default:
+			return nil, fmt.Errorf("unexpected path %s", req.URL.Path)
+		}
+	})
+
+	out := captureStdout(t, func() {
+		if err := (&SearchCmd{Query: "q", Limit: 20, JSON: true, Verbose: true}).Run(ctx); err != nil {
+			t.Fatalf("SearchCmd.Run returned error: %v", err)
+		}
+	})
+
+	var got []output.Message
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("output is not valid JSON: %v\n%s", err, out)
+	}
+	first := got[0]
+	if first.Type != "message" {
+		t.Fatalf("expected type restored in verbose, got %q", first.Type)
+	}
+	if !strings.Contains(first.TextRaw, "<@U2>") {
+		t.Fatalf("expected raw mention preserved in text_raw under verbose, got %q", first.TextRaw)
 	}
 }
 
