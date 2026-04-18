@@ -164,7 +164,8 @@ func (c *ChannelReadCmd) formatHistoryAsMarkdown(messages []slack.Message, resol
 
 type ChannelInfoCmd struct {
 	Channel string `arg:"" help:"Channel name, ID, or Slack URL"`
-	JSON    bool   `help:"Output as JSON" short:"j"`
+	JSON    bool   `help:"Output as pretty JSON object" short:"j" xor:"format"`
+	JSONL   bool   `help:"Output as a single JSON Lines record" xor:"format"`
 }
 
 func (c *ChannelInfoCmd) Run(ctx *Context) error {
@@ -198,8 +199,12 @@ func (c *ChannelInfoCmd) Run(ctx *Context) error {
 		return fmt.Errorf("failed to get channel info: %w", err)
 	}
 
+	rec := output.ToChannel(*info)
+	if c.JSONL {
+		return output.EmitJSONL([]output.Channel{rec})
+	}
 	if c.JSON {
-		return output.EmitJSON(output.ToChannel(*info))
+		return output.EmitJSON(rec)
 	}
 
 	fmt.Printf("Name: #%s\n", info.Name)

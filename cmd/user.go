@@ -69,8 +69,9 @@ func (c *UserListCmd) Run(ctx *Context) error {
 }
 
 type UserInfoCmd struct {
-	User string `arg:"" help:"User ID or email"`
-	JSON bool   `help:"Output as JSON" short:"j"`
+	User  string `arg:"" help:"User ID or email"`
+	JSON  bool   `help:"Output as pretty JSON object" short:"j" xor:"format"`
+	JSONL bool   `help:"Output as a single JSON Lines record" xor:"format"`
 }
 
 func (c *UserInfoCmd) Run(ctx *Context) error {
@@ -92,8 +93,12 @@ func (c *UserInfoCmd) Run(ctx *Context) error {
 		return fmt.Errorf("failed to get user info: %w", err)
 	}
 
+	rec := output.ToUser(*user)
+	if c.JSONL {
+		return output.EmitJSONL([]output.User{rec})
+	}
 	if c.JSON {
-		return output.EmitJSON(output.ToUser(*user))
+		return output.EmitJSON(rec)
 	}
 
 	fmt.Printf("Name: %s\n", user.RealName)
