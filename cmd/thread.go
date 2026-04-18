@@ -85,7 +85,7 @@ func (c *ThreadReadCmd) Run(ctx *Context) error {
 	}
 
 	if c.Markdown {
-		fmt.Print(c.formatRepliesAsMarkdown(replies.Messages, resolver))
+		fmt.Print(c.formatRepliesAsMarkdown(replies.Messages, resolver, threadTS))
 		return nil
 	}
 
@@ -103,21 +103,33 @@ func (c *ThreadReadCmd) augmentReadError(ctx *Context, err error) error {
 	return err
 }
 
-func (c *ThreadReadCmd) formatRepliesAsMarkdown(messages []slack.Message, resolver *slack.Resolver) string {
+func (c *ThreadReadCmd) formatRepliesAsMarkdown(messages []slack.Message, resolver *slack.Resolver, threadTS string) string {
 	var sb strings.Builder
 
-	for i, msg := range messages {
+	// If the first message is the thread parent, render it as the root
+	// and the rest as quoted replies. If a date filter excluded the
+	// parent (messages[0].TS != threadTS), render everything as replies
+	// with a note so the count and block labels stay accurate.
+	hasParent := len(messages) > 0 && messages[0].TS == threadTS
+
+	start := 0
+	if hasParent {
+		msg := messages[0]
 		username := resolver.ResolveUser(msg.User)
 		text := resolver.FormatText(msg.Text)
-
-		if i == 0 {
-			fmt.Fprintf(&sb, "**%s** _%s_\n\n", username, msg.TS)
-			fmt.Fprintf(&sb, "%s\n\n", text)
-			if len(messages) > 1 {
-				fmt.Fprintf(&sb, "---\n\n**%d replies**\n\n", len(messages)-1)
-			}
-			continue
+		fmt.Fprintf(&sb, "**%s** _%s_\n\n", username, msg.TS)
+		fmt.Fprintf(&sb, "%s\n\n", text)
+		if len(messages) > 1 {
+			fmt.Fprintf(&sb, "---\n\n**%d replies**\n\n", len(messages)-1)
 		}
+		start = 1
+	} else if len(messages) > 0 {
+		fmt.Fprintf(&sb, "_Thread parent filtered out; showing %d matching replies._\n\n", len(messages))
+	}
+
+	for _, msg := range messages[start:] {
+		username := resolver.ResolveUser(msg.User)
+		text := resolver.FormatText(msg.Text)
 
 		fmt.Fprintf(&sb, "> **%s** _%s_\n>\n", username, msg.TS)
 		for _, line := range strings.Split(text, "\n") {
