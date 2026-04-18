@@ -71,6 +71,16 @@ func (ctx *Context) augmentCrossWorkspaceChannelHint(rawURL string, err error) e
 	return fmt.Errorf("%w. This channel may exist in another workspace. Current workspace is %s; try one of: --workspace %s", err, current, strings.Join(otherWorkspaces, " or --workspace "))
 }
 
+// wrapMissingScope augments a missing_scope Slack API error with the scope
+// name the caller needs. Returns nil if err is not a missing_scope error so
+// the caller can decide how to handle other failures.
+func wrapMissingScope(err error, requiredScope string) error {
+	if slack.IsAPIError(err, "missing_scope") {
+		return fmt.Errorf("%w. Update the Slack app scopes to include %s, then rerun 'slack-cli auth login' for that workspace", err, requiredScope)
+	}
+	return nil
+}
+
 func (ctx *Context) workspaceUsedForRequest(rawURL string) string {
 	if ctx.Config == nil {
 		return ""

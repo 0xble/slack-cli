@@ -106,12 +106,12 @@ func (c *FileUploadCmd) Run(ctx *Context) error {
 		return err
 	}
 
-	target, err := resolveFileUploadTarget(client, c.Recipient)
+	target, err := slack.ResolveConversationTarget(client, c.Recipient)
 	if err != nil {
 		err = ctx.augmentChannelNotFoundError("", err)
 		err = ctx.augmentCrossWorkspaceChannelHint("", err)
-		if slack.IsAPIError(err, "missing_scope") {
-			return fmt.Errorf("%w. Update the Slack app scopes and rerun 'slack-cli auth login' for that workspace", err)
+		if wrapped := wrapMissingScope(err, "the scopes required for this recipient"); wrapped != nil {
+			return wrapped
 		}
 		return err
 	}
@@ -127,8 +127,8 @@ func (c *FileUploadCmd) Run(ctx *Context) error {
 
 	uploadURL, err := client.GetUploadURLExternal(filename, stat.Size())
 	if err != nil {
-		if err := wrapFileWriteScopeError(err); err != nil {
-			return err
+		if wrapped := wrapMissingScope(err, "files:write"); wrapped != nil {
+			return wrapped
 		}
 		return fmt.Errorf("failed to initialize file upload: %w", err)
 	}
@@ -139,15 +139,15 @@ func (c *FileUploadCmd) Run(ctx *Context) error {
 
 	resp, err := client.CompleteUploadExternal(uploadURL.FileID, title, target.ChannelID, c.Comment, c.Thread)
 	if err != nil {
-		if err := wrapFileWriteScopeError(err); err != nil {
-			return err
+		if wrapped := wrapMissingScope(err, "files:write"); wrapped != nil {
+			return wrapped
 		}
 		return fmt.Errorf("failed to complete file upload: %w", err)
 	}
 
 	fileID := resolveUploadedFileID(uploadURL.FileID, resp)
 
-	fmt.Printf("Uploaded file to %s (%s): %s\n", target.Label, target.ChannelID, fileID)
+	fmt.Printf("Uploaded file to %s (%s): %s\n", formatConversationTargetLabel(target), target.ChannelID, fileID)
 	return nil
 }
 
@@ -163,8 +163,8 @@ func (c *FileDeleteCmd) Run(ctx *Context) error {
 
 	for _, fileID := range c.FileIDs {
 		if err := client.DeleteFile(fileID); err != nil {
-			if err := wrapFileWriteScopeError(err); err != nil {
-				return err
+			if wrapped := wrapMissingScope(err, "files:write"); wrapped != nil {
+				return wrapped
 			}
 			return fmt.Errorf("failed to delete file %s: %w", fileID, err)
 		}
@@ -174,142 +174,44 @@ func (c *FileDeleteCmd) Run(ctx *Context) error {
 	return nil
 }
 
-type fileUploadTarget struct {
-	ChannelID string
-	Label     string
-}
-
-func resolveFileUploadTarget(client *slack.Client, recipient string) (*fileUploadTarget, error) {
-	trimmed := strings.TrimSpace(recipient)
-	if trimmed == "" {
-		return nil, fmt.Errorf("recipient is required")
+// formatConversationTargetLabel returns a human-readable label for a
+// resolved conversation target, suitable for CLI status lines.
+func formatConversationTargetLabel(target *slack.ConversationTarget) string {
+	if target == nil {
+		return ""
 	}
-
-	switch {
-	case strings.HasPrefix(trimmed, "D"):
-		return &fileUploadTarget{ChannelID: trimmed, Label: trimmed}, nil
-	case strings.HasPrefix(trimmed, "U"):
-		user, err := client.GetUserInfo(trimmed)
-		if err != nil {
-			return nil, err
+	if target.IsDM {
+		if target.Username != "" {
+			return "@" + target.Username
 		}
-		return openDMUploadTarget(client, user)
-	case strings.HasPrefix(trimmed, "@"):
-		user, err := lookupUploadUserByHandle(client, trimmed)
-		if err != nil {
-			return nil, err
-		}
-		return openDMUploadTarget(client, user)
-	case strings.HasPrefix(trimmed, "C") || strings.HasPrefix(trimmed, "G"):
-		info, err := client.GetConversationInfo(trimmed)
-		if err != nil {
-			return nil, err
-		}
-		return &fileUploadTarget{ChannelID: trimmed, Label: formatUploadChannelLabel(info, trimmed)}, nil
-	default:
-		return resolveChannelUploadTargetByName(client, trimmed)
+		return target.ChannelID
 	}
-}
-
-func lookupUploadUserByHandle(client *slack.Client, handle string) (*slack.User, error) {
-	needle := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(handle)), "@")
-
-	cursor := ""
-	for {
-		users, err := client.ListUsersPage(1000, cursor)
-		if err != nil {
-			return nil, fmt.Errorf("failed to list users: %w", err)
+	if target.Name != "" {
+		if target.IsPrivate {
+			return target.Name
 		}
-
-		for _, user := range users.Members {
-			if strings.ToLower(strings.TrimSpace(user.Name)) == needle {
-				matched := user
-				return &matched, nil
-			}
-		}
-
-		cursor = strings.TrimSpace(users.ResponseMetadata.NextCursor)
-		if cursor == "" {
-			break
-		}
+		return "#" + target.Name
 	}
-
-	return nil, fmt.Errorf("user not found: %s", handle)
-}
-
-func openDMUploadTarget(client *slack.Client, user *slack.User) (*fileUploadTarget, error) {
-	resp, err := client.OpenConversation([]string{user.ID}, true)
-	if err != nil {
-		return nil, err
-	}
-
-	label := "@" + user.Name
-	if strings.TrimSpace(user.Name) == "" {
-		label = user.ID
-	}
-
-	return &fileUploadTarget{
-		ChannelID: resp.Channel.ID,
-		Label:     label,
-	}, nil
-}
-
-func formatUploadChannelLabel(channel *slack.Channel, fallback string) string {
-	if channel != nil && strings.TrimSpace(channel.Name) != "" {
-		if channel.IsPrivate {
-			return channel.Name
-		}
-		return "#" + channel.Name
-	}
-	return strings.TrimSpace(fallback)
-}
-
-func resolveChannelUploadTargetByName(client *slack.Client, recipient string) (*fileUploadTarget, error) {
-	channelName := strings.TrimPrefix(strings.TrimSpace(recipient), "#")
-
-	cursor := ""
-	for {
-		channels, err := client.ListConversationsPage("public_channel,private_channel", 1000, cursor)
-		if err != nil {
-			return nil, fmt.Errorf("failed to list channels: %w", err)
-		}
-
-		for _, channel := range channels.Channels {
-			if channel.Name != channelName {
-				continue
-			}
-			return &fileUploadTarget{
-				ChannelID: channel.ID,
-				Label:     formatUploadChannelLabel(&channel, recipient),
-			}, nil
-		}
-
-		cursor = strings.TrimSpace(channels.ResponseMetadata.NextCursor)
-		if cursor == "" {
-			break
-		}
-	}
-
-	return nil, &slack.APIError{Method: "conversations.resolve", Code: "channel_not_found"}
+	return target.ChannelID
 }
 
 func formatFileListLine(file slack.File) string {
-	label := strings.TrimSpace(file.Title)
+	label := file.Title
 	if label == "" {
-		label = strings.TrimSpace(file.Name)
+		label = file.Name
 	}
 	if label == "" {
 		label = file.ID
 	}
 
 	details := []string{humanSize(file.Size)}
-	if strings.TrimSpace(file.PrettyType) != "" {
-		details = append(details, strings.TrimSpace(file.PrettyType))
-	} else if strings.TrimSpace(file.Mimetype) != "" {
-		details = append(details, strings.TrimSpace(file.Mimetype))
+	if file.PrettyType != "" {
+		details = append(details, file.PrettyType)
+	} else if file.Mimetype != "" {
+		details = append(details, file.Mimetype)
 	}
 
-	if file.Name != "" && file.Title != "" && strings.TrimSpace(file.Name) != strings.TrimSpace(file.Title) {
+	if file.Name != "" && file.Title != "" && file.Name != file.Title {
 		details = append(details, file.Name)
 	}
 
@@ -318,32 +220,32 @@ func formatFileListLine(file slack.File) string {
 
 func printFileInfo(file *slack.File) {
 	fmt.Printf("ID: %s\n", file.ID)
-	if strings.TrimSpace(file.Name) != "" {
+	if file.Name != "" {
 		fmt.Printf("Name: %s\n", file.Name)
 	}
-	if strings.TrimSpace(file.Title) != "" {
+	if file.Title != "" {
 		fmt.Printf("Title: %s\n", file.Title)
 	}
-	if strings.TrimSpace(file.PrettyType) != "" {
+	if file.PrettyType != "" {
 		fmt.Printf("Type: %s\n", file.PrettyType)
-	} else if strings.TrimSpace(file.Mimetype) != "" {
+	} else if file.Mimetype != "" {
 		fmt.Printf("Type: %s\n", file.Mimetype)
 	}
 	fmt.Printf("Size: %s\n", humanSize(file.Size))
-	if strings.TrimSpace(file.Mode) != "" {
+	if file.Mode != "" {
 		fmt.Printf("Mode: %s\n", file.Mode)
 	}
 	if file.Created > 0 {
 		fmt.Printf("Created: %s\n", time.Unix(file.Created, 0).Format(time.RFC3339))
 	}
-	if strings.TrimSpace(file.User) != "" {
+	if file.User != "" {
 		fmt.Printf("User: %s\n", file.User)
 	}
 	fmt.Printf("Public: %v\n", file.IsPublic)
-	if strings.TrimSpace(file.FileAccess) != "" {
+	if file.FileAccess != "" {
 		fmt.Printf("Access: %s\n", file.FileAccess)
 	}
-	if strings.TrimSpace(file.Permalink) != "" {
+	if file.Permalink != "" {
 		fmt.Printf("Permalink: %s\n", file.Permalink)
 	}
 }
@@ -374,21 +276,21 @@ func resolveUploadedFileID(fallback string, response *slack.CompleteUploadExtern
 	return fallback
 }
 
-func wrapFileWriteScopeError(err error) error {
-	if slack.IsAPIError(err, "missing_scope") {
-		return fmt.Errorf("%w. Update the Slack app scopes to include files:write, then rerun 'slack-cli auth login' for that workspace", err)
-	}
-	return nil
-}
-
 func humanSize(size int) string {
-	if size < 1024 {
+	const unit = 1024
+	if size < unit {
 		return fmt.Sprintf("%d B", size)
 	}
-	if size < 1024*1024 {
-		return fmt.Sprintf("%.1f KB", float64(size)/1024)
+	div, exp := int64(unit), 0
+	for n := int64(size) / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
 	}
-	return fmt.Sprintf("%.1f MB", float64(size)/(1024*1024))
+	units := []string{"KB", "MB", "GB", "TB"}
+	if exp >= len(units) {
+		exp = len(units) - 1
+	}
+	return fmt.Sprintf("%.1f %s", float64(size)/float64(div), units[exp])
 }
 
 func openUploadFile(path string) (*os.File, os.FileInfo, error) {
