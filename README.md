@@ -277,6 +277,7 @@ The included manifest requests these user token scopes:
 - `im:write` - Open or resume direct messages and DM-targeted file uploads
 - `mpim:history` - Read multi-party direct message history
 - `mpim:read` - Access multi-party direct message metadata
+- `reactions:write` - Add emoji reactions to messages
 - `search:read` - Search messages
 - `users:read` - List users
 - `users:read.email` - Lookup users by email
