@@ -605,6 +605,28 @@ func (c *Client) PostMessage(channelID, text, threadTS string, mrkdwn bool) (*Po
 	return &result, nil
 }
 
+func (c *Client) AddReaction(channelID, timestamp, name string) (*ReactionResponse, error) {
+	params := url.Values{}
+	params.Set("channel", channelID)
+	params.Set("timestamp", timestamp)
+	params.Set("name", name)
+
+	body, err := c.requestPost("reactions.add", params)
+	if err != nil {
+		if IsAPIError(err, "already_reacted") {
+			return &ReactionResponse{OK: true}, nil
+		}
+		return nil, err
+	}
+
+	var result ReactionResponse
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("failed to parse reactions.add response: %w", err)
+	}
+
+	return &result, nil
+}
+
 // ExchangeOAuthCode exchanges an OAuth authorization code for an access token
 func ExchangeOAuthCode(clientID, clientSecret, code, redirectURI string) (string, error) {
 	params := url.Values{}

@@ -162,6 +162,10 @@ type PostMessageResponse struct {
 	Message Message `json:"message"`
 }
 
+type ReactionResponse struct {
+	OK bool `json:"ok"`
+}
+
 type SearchResponse struct {
 	OK       bool `json:"ok"`
 	Messages struct {

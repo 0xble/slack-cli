@@ -38,6 +38,34 @@ func TestParseThreadURL(t *testing.T) {
 	})
 }
 
+func TestParseMessageURL(t *testing.T) {
+	t.Run("message permalink", func(t *testing.T) {
+		ref, err := ParseMessageURL("https://buildkite.slack.com/archives/C123/p1773973307481399")
+		if err != nil {
+			t.Fatalf("ParseMessageURL returned error: %v", err)
+		}
+		if ref.WorkspaceHost != "buildkite.slack.com" {
+			t.Fatalf("expected workspace host, got %q", ref.WorkspaceHost)
+		}
+		if ref.ChannelID != "C123" {
+			t.Fatalf("expected channel C123, got %q", ref.ChannelID)
+		}
+		if ref.Timestamp != "1773973307.481399" {
+			t.Fatalf("expected timestamp, got %q", ref.Timestamp)
+		}
+	})
+
+	t.Run("reply permalink uses reply timestamp from path", func(t *testing.T) {
+		ref, err := ParseMessageURL("https://buildkite.slack.com/archives/C123/p1773999999000000?thread_ts=1773973307.481399&cid=C123")
+		if err != nil {
+			t.Fatalf("ParseMessageURL returned error: %v", err)
+		}
+		if ref.Timestamp != "1773999999.000000" {
+			t.Fatalf("expected reply timestamp from path, got %q", ref.Timestamp)
+		}
+	})
+}
+
 func TestIsSlackHostedURL(t *testing.T) {
 	tests := []struct {
 		name string
@@ -311,6 +339,81 @@ func TestPostMessage_UsesPOSTFormEncoding(t *testing.T) {
 	}
 	if resp.Channel != "D123" || resp.TS != "1775772298.509159" {
 		t.Fatalf("unexpected response: %+v", resp)
+	}
+}
+
+func TestAddReaction_UsesPOSTFormEncoding(t *testing.T) {
+	client := &Client{
+		userToken: "xoxp-test-token",
+		httpClient: &http.Client{
+			Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				if req.Method != http.MethodPost {
+					t.Fatalf("expected POST, got %s", req.Method)
+				}
+				if req.URL.Path != "/api/reactions.add" {
+					t.Fatalf("expected /api/reactions.add, got %s", req.URL.Path)
+				}
+
+				body, err := io.ReadAll(req.Body)
+				if err != nil {
+					t.Fatalf("failed to read request body: %v", err)
+				}
+				values, err := url.ParseQuery(string(body))
+				if err != nil {
+					t.Fatalf("failed to parse request body: %v", err)
+				}
+				if values.Get("channel") != "C123" {
+					t.Fatalf("expected channel=C123, got %q", values.Get("channel"))
+				}
+				if values.Get("timestamp") != "1775772298.509159" {
+					t.Fatalf("expected timestamp=1775772298.509159, got %q", values.Get("timestamp"))
+				}
+				if values.Get("name") != "+1" {
+					t.Fatalf("expected name=+1, got %q", values.Get("name"))
+				}
+
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Status:     "200 OK",
+					Header:     http.Header{"Content-Type": []string{"application/json"}},
+					Body:       io.NopCloser(strings.NewReader(`{"ok":true}`)),
+					Request:    req,
+				}, nil
+			}),
+		},
+	}
+
+	resp, err := client.AddReaction("C123", "1775772298.509159", "+1")
+	if err != nil {
+		t.Fatalf("AddReaction returned error: %v", err)
+	}
+	if !resp.OK {
+		t.Fatalf("expected ok response")
+	}
+}
+
+func TestAddReactionAlreadyReactedIsSuccess(t *testing.T) {
+	client := &Client{
+		userToken: "xoxp-test-token",
+		httpClient: &http.Client{
+			Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Status:     "200 OK",
+					Header:     http.Header{"Content-Type": []string{"application/json"}},
+					Body:       io.NopCloser(strings.NewReader(`{"ok":false,"error":"already_reacted"}`)),
+					Request:    req,
+				}, nil
+			}),
+		},
+	}
+
+	resp, err := client.AddReaction("C123", "1775772298.509159", "+1")
+	if err != nil {
+		t.Fatalf("AddReaction returned error: %v", err)
+	}
+	if !resp.OK {
+		t.Fatalf("expected already_reacted to return ok response")
 	}
 }
 
