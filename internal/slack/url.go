@@ -77,8 +77,13 @@ func parseSlackPathTimestamp(pathPart string) (string, bool) {
 		return "", false
 	}
 	ts = strings.TrimPrefix(ts, "p")
-	if len(ts) < 11 {
+	if len(ts) != 16 {
 		return "", false
+	}
+	for _, char := range ts {
+		if char < '0' || char > '9' {
+			return "", false
+		}
 	}
 	return ts[:10] + "." + ts[10:], true
 }
