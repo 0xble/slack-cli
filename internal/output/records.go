@@ -41,7 +41,7 @@ type FileRef struct {
 	Permalink string `json:"permalink,omitempty"`
 }
 
-// File is the shape emitted by file list and file info.
+// File is the shape emitted by file list, file info, canvas list, and canvas read.
 type File struct {
 	ID                 string   `json:"id"`
 	Created            int64    `json:"created,omitempty"`
@@ -78,6 +78,8 @@ type Channel struct {
 	NumMembers int    `json:"num_members,omitempty"`
 	Topic      string `json:"topic,omitempty"`
 	Purpose    string `json:"purpose,omitempty"`
+	UserID     string `json:"user_id,omitempty"`
+	User       string `json:"user,omitempty"`
 }
 
 // User is the shape emitted by user list and user info.
@@ -136,6 +138,7 @@ func ToChannel(ch slack.Channel) Channel {
 		NumMembers: ch.NumMembers,
 		Topic:      ch.Topic.Value,
 		Purpose:    ch.Purpose.Value,
+		UserID:     ch.User,
 	}
 }
 
@@ -186,17 +189,6 @@ func ToUser(u slack.User) User {
 	}
 }
 
-// ToFileRef returns a compact file reference suitable for embedding on Message.
-func ToFileRef(f slack.File) FileRef {
-	return FileRef{
-		ID:        f.ID,
-		Name:      f.Name,
-		Title:     f.Title,
-		Mimetype:  f.Mimetype,
-		Permalink: f.Permalink,
-	}
-}
-
 // ToFile converts a slack.File wire type into the public File record.
 func ToFile(f slack.File) File {
 	return File{
@@ -223,6 +215,17 @@ func ToFile(f slack.File) File {
 		Groups:             f.Groups,
 		IMs:                f.IMs,
 		FileAccess:         f.FileAccess,
+	}
+}
+
+// ToFileRef returns a compact file reference suitable for embedding on Message.
+func ToFileRef(f slack.File) FileRef {
+	return FileRef{
+		ID:        f.ID,
+		Name:      f.Name,
+		Title:     f.Title,
+		Mimetype:  f.Mimetype,
+		Permalink: f.Permalink,
 	}
 }
 
@@ -263,7 +266,7 @@ func (mc MessageConverter) Convert(m slack.Message) Message {
 	// fall back to the command scope channel.
 	var ch *ChannelRef
 	if m.Channel != nil && m.Channel.ID != "" {
-		ch = ToChannelRef(*m.Channel)
+		ch = ChannelRefFromID(mc.Resolver, m.Channel.ID, m.Channel.Name)
 	} else {
 		ch = mc.Channel
 	}
