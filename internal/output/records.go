@@ -198,9 +198,9 @@ func (mc MessageConverter) Convert(m slack.Message) Message {
 		}
 	}
 
-	text := m.Text
+	text := m.BodyText()
 	if mc.Resolver != nil {
-		text = mc.Resolver.FormatText(m.Text)
+		text = mc.Resolver.FormatText(text)
 	}
 
 	var files []FileRef

@@ -200,6 +200,28 @@ func TestMessageConverterPreservesSubtype(t *testing.T) {
 	}
 }
 
+func TestMessageConverterUsesBodyText(t *testing.T) {
+	conv := MessageConverter{}
+	got := conv.Convert(slack.Message{
+		Type: "message",
+		Text: "LongMessage.Part",
+		TS:   "100",
+		Blocks: []slack.Block{
+			{
+				Type: "section",
+				Text: &slack.BlockText{Type: "mrkdwn", Text: "LongMessage.Part"},
+			},
+			{
+				Type: "section",
+				Text: &slack.BlockText{Type: "mrkdwn", Text: "Two + ordering"},
+			},
+		},
+	})
+	if got.Text != "LongMessage.PartTwo + ordering" {
+		t.Fatalf("expected body text in JSON record, got %q", got.Text)
+	}
+}
+
 func TestMessageConverterPrefersMessageChannelWhenConverterHasNone(t *testing.T) {
 	conv := MessageConverter{}
 	got := conv.Convert(slack.Message{

@@ -147,8 +147,9 @@ e.g. `bot_message`, `channel_join`, `channel_archive`, `huddle_thread`),
 `reply_count`, `files`, and — on `search` — `channel`, `workspace`,
 `permalink`. Fields that only restate the command scope (`type`, the
 scope `channel` on `channel read` / `thread read`, the scope `thread_ts`
-on `thread read`) and duplicates (`text_raw`) are omitted. `channel.type`
-is one of `channel`, `private_channel`, `im`, or `mpim`.
+on `thread read`) and duplicates (`text_raw`) are omitted. When Slack channel
+metadata is available, `channel.type` is one of `channel`, `private_channel`,
+`im`, or `mpim`.
 
 Pass `--verbose` (`-V`) to restore the full shape: `type`, `text_raw`,
 and the scope `channel` / `thread_ts` come back for consumers that want

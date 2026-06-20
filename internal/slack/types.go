@@ -100,8 +100,13 @@ type Topic struct {
 }
 
 type ConversationsResponse struct {
-	OK       bool      `json:"ok"`
-	Channels []Channel `json:"channels"`
+	OK               bool             `json:"ok"`
+	Channels         []Channel        `json:"channels"`
+	ResponseMetadata ResponseMetadata `json:"response_metadata,omitempty"`
+}
+
+type ResponseMetadata struct {
+	NextCursor string `json:"next_cursor,omitempty"`
 }
 
 type SearchResponse struct {

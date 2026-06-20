@@ -21,11 +21,12 @@ func (c *SearchCmd) Run(ctx *Context) error {
 		return err
 	}
 	resolver := slack.NewResolver(client)
-	// Preload the channel list in one call so per-match channel.type
-	// population on the JSON path does not fan out to N+1
-	// conversations.info requests across N distinct result channels.
+	// Preload the channel list so per-match channel.type population on
+	// the JSON path does not fan out to N+1 conversations.info requests.
 	if c.JSON || c.JSONL {
-		resolver.PreloadChannels("public_channel,private_channel,mpim,im")
+		if err := resolver.PreloadChannels("public_channel,private_channel,mpim,im"); err != nil {
+			resolver.DisableChannelInfoLookup()
+		}
 	}
 	resp, err := client.SearchMessages(c.Query, c.Limit)
 	if err != nil {
