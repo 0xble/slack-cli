@@ -151,23 +151,20 @@ func TestDateFilter_ToTimestampParams_PreservesMicroseconds(t *testing.T) {
 	}
 }
 
-func TestValidateSearchLast_RejectsAnyLast(t *testing.T) {
-	// Slack's search operators are calendar-date only, so any --last value
-	// loses intra-day precision when resolved into a calendar window.
-	// ValidateSearchLast should reject every non-empty input.
-	for _, last := range []string{"12h", "30m", "45s", "24h", "1d", "7d", "2w"} {
-		if err := ValidateSearchLast(last); err == nil {
-			t.Fatalf("expected ValidateSearchLast(%q) to reject", last)
-		}
+func TestResolveSearchDateFilter(t *testing.T) {
+	f, err := ResolveSearchDateFilter("2026-04-01", "2026-04-15", "", refNow)
+	if err != nil {
+		t.Fatalf("ResolveSearchDateFilter returned error: %v", err)
+	}
+	if f.After.IsZero() || f.Before.IsZero() {
+		t.Fatalf("expected both bounds set, got %+v", f)
 	}
 }
 
-func TestValidateSearchLast_EmptyIsNoOp(t *testing.T) {
-	if err := ValidateSearchLast(""); err != nil {
-		t.Fatalf("expected empty --last to pass, got %v", err)
-	}
-	if err := ValidateSearchLast("   "); err != nil {
-		t.Fatalf("expected whitespace --last to pass, got %v", err)
+func TestResolveSearchDateFilter_OnCannotCombine(t *testing.T) {
+	_, err := ResolveSearchDateFilter("2026-04-01", "", "2026-04-10", refNow)
+	if err == nil || !strings.Contains(err.Error(), "--on cannot be combined with --after or --before") {
+		t.Fatalf("expected search-specific --on combination error, got %v", err)
 	}
 }
 

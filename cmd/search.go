@@ -12,7 +12,7 @@ import (
 type SearchCmd struct {
 	Query string `arg:"" help:"Search query (supports Slack search syntax: from:@user, in:#channel, etc.)"`
 	Limit int    `help:"Maximum number of results" default:"20"`
-	slack.DateFilterFlags
+	slack.SearchDateFilterFlags
 	JSON  bool `help:"Output as pretty JSON array" short:"j" xor:"format"`
 	JSONL bool `help:"Output as JSON Lines, one match per line" xor:"format"`
 }
@@ -20,10 +20,6 @@ type SearchCmd struct {
 func (c *SearchCmd) Run(ctx *Context) error {
 	filter, err := c.Resolve(time.Now())
 	if err != nil {
-		return err
-	}
-
-	if err := slack.ValidateSearchLast(c.Last); err != nil {
 		return err
 	}
 

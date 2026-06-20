@@ -32,9 +32,31 @@ func (f DateFilterFlags) Resolve(now time.Time) (DateFilter, error) {
 	return ResolveDateFilter(f.After, f.Before, f.On, f.Last, now)
 }
 
+// SearchDateFilterFlags is the shared kong flag block for Slack search.
+// Search only supports calendar-date operators, so rolling --last windows are
+// intentionally omitted instead of being silently broadened.
+type SearchDateFilterFlags struct {
+	After  string `help:"Only match messages on or after DATE (YYYY-MM-DD, UTC)" xor:"after-on"`
+	Before string `help:"Only match messages on or before DATE (YYYY-MM-DD, UTC)" xor:"before-on"`
+	On     string `help:"Only match messages on DATE (YYYY-MM-DD, UTC)" xor:"after-on,before-on"`
+}
+
+// Resolve validates the embedded search flags and returns a calendar filter.
+func (f SearchDateFilterFlags) Resolve(now time.Time) (DateFilter, error) {
+	return ResolveSearchDateFilter(f.After, f.Before, f.On, now)
+}
+
 // IsZero returns true when neither bound is set.
 func (d DateFilter) IsZero() bool {
 	return d.After.IsZero() && d.Before.IsZero()
+}
+
+// ResolveSearchDateFilter validates date filters expressible by Slack search.
+func ResolveSearchDateFilter(after, before, on string, now time.Time) (DateFilter, error) {
+	if strings.TrimSpace(on) != "" && (strings.TrimSpace(after) != "" || strings.TrimSpace(before) != "") {
+		return DateFilter{}, fmt.Errorf("--on cannot be combined with --after or --before")
+	}
+	return ResolveDateFilter(after, before, on, "", now)
 }
 
 // ResolveDateFilter validates the flag combination and returns a filter
@@ -135,21 +157,6 @@ func (d DateFilter) ToSearchOperators() string {
 		parts = append(parts, "before:"+d.Before.Add(24*time.Hour).UTC().Format("2006-01-02"))
 	}
 	return strings.Join(parts, " ")
-}
-
-// ValidateSearchLast rejects --last entirely on search. Slack's search
-// operators are calendar-date only, so any --last duration loses intra-day
-// precision: running --last 24h at 15:00 UTC resolves to "since yesterday
-// 15:00," which the operators can only approximate as "since yesterday
-// 00:00," returning messages hours outside the requested window. Callers
-// should invoke this before composing the query so the flag fails loudly
-// instead of silently broadening. Use --after DATE, --before DATE, or --on
-// DATE for search windows.
-func ValidateSearchLast(last string) error {
-	if strings.TrimSpace(last) == "" {
-		return nil
-	}
-	return fmt.Errorf("--last cannot be used with search because Slack's search operators are calendar-date only and cannot express a rolling-duration window; use --after DATE, --before DATE, or --on DATE instead")
 }
 
 // QueryHasDateOperator reports whether the given search query already

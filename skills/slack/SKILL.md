@@ -57,6 +57,19 @@ slack-cli channel read #general --limit 50
 slack-cli channel read "https://workspace.slack.com/archives/C123" --markdown
 ```
 
+### Filter by date
+
+`search` supports calendar filters: `--after`, `--before`, and `--on`.
+`channel read` and `thread read` also support rolling windows with `--last`.
+Dates are UTC and use `YYYY-MM-DD`.
+
+```bash
+slack-cli search "deploy" --after 2026-04-01 --before 2026-04-30
+slack-cli search "incident" --on 2026-04-18
+slack-cli channel read #general --last 2w
+slack-cli thread read "$URL" --on 2026-04-18 --json
+```
+
 ### Machine-readable output (--json / --jsonl)
 
 These commands support `--json` (pretty array or object) and `--jsonl` (one
