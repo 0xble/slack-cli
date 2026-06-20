@@ -172,6 +172,15 @@ func QueryHasDateOperator(query string) bool {
 	return dateOperatorPattern.MatchString(query)
 }
 
+func dateLayoutHasTime(layout string) bool {
+	for _, token := range []string{"15", "04", "05", "PM", "pm", "MST", "Z07", "-07", ".000"} {
+		if strings.Contains(layout, token) {
+			return true
+		}
+	}
+	return false
+}
+
 func parseDateStart(s string) (time.Time, error) {
 	s = strings.TrimSpace(s)
 	if s == "" {
@@ -183,6 +192,14 @@ func parseDateStart(s string) (time.Time, error) {
 			return time.Time{}, fmt.Errorf("ambiguous date %q; use an unambiguous format like 2026-04-18 or 18 Apr 2026", s)
 		}
 		return time.Time{}, fmt.Errorf("could not parse date %q; use a format like 2026-04-18, 18 Apr 2026, or Apr 18 2026", s)
+	}
+
+	layout, err := dateparse.ParseFormat(s)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("could not parse date %q: %w", s, err)
+	}
+	if dateLayoutHasTime(layout) {
+		return time.Time{}, fmt.Errorf("date %q must not include a time; use a calendar date like 2026-04-18 or 18 Apr 2026", s)
 	}
 
 	t, err := dateparse.ParseIn(s, time.UTC)

@@ -30,7 +30,6 @@ func TestResolveDateFilter_FlexibleDateInputs(t *testing.T) {
 		{"slash date", "2026/04/01"},
 		{"day month year", "1 Apr 2026"},
 		{"month day year", "April 1, 2026"},
-		{"rfc3339 timestamp", "2026-04-01T15:04:05Z"},
 	}
 	want := time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC)
 	for _, tt := range tests {
@@ -41,6 +40,21 @@ func TestResolveDateFilter_FlexibleDateInputs(t *testing.T) {
 			}
 			if !f.After.Equal(want) {
 				t.Fatalf("expected After=%v, got %v", want, f.After)
+			}
+		})
+	}
+}
+
+func TestResolveDateFilter_RejectsDateTimeInputs(t *testing.T) {
+	for _, input := range []string{
+		"2026-04-01T15:04:05Z",
+		"2026-04-01 15:04:05",
+		"Apr 1 2026 10:30",
+	} {
+		t.Run(input, func(t *testing.T) {
+			_, err := ResolveDateFilter(input, "", "", "", refNow)
+			if err == nil || !strings.Contains(err.Error(), "must not include a time") {
+				t.Fatalf("expected date-time rejection for %q, got %v", input, err)
 			}
 		})
 	}
