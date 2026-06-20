@@ -125,6 +125,30 @@ slack-cli user info U123                # Show user details
 slack-cli user info alice@acme.com      # Lookup by email
 ```
 
+### Machine-readable output
+
+Read, search, list, and info commands accept `--json` (pretty JSON array or
+object) and `--jsonl` (one JSON object per line) for scripting and agent
+consumption: `search`, `channel read`, `channel list`, `channel info`,
+`thread read`, `user list`, `user info`.
+
+```bash
+slack-cli search "deploy" --limit 100 --jsonl | jq -c 'select(.channel.type == "channel")'
+slack-cli channel read #general --limit 50 --json
+slack-cli thread read <url> --json
+slack-cli channel list --json
+slack-cli user list --jsonl
+slack-cli channel info C123 --json
+```
+
+Message records emit a full normalized shape for machines: `ts`,
+`thread_ts` (when Slack provides it), `type`, `subtype` (when set, e.g.
+`bot_message`, `channel_join`, `channel_archive`, `huddle_thread`),
+`user`, `user_id`, `text` (resolver-formatted), `text_raw`, `channel`,
+`workspace`, `permalink`, `reply_count`, and `files` when those fields are
+available. When Slack channel metadata is available, `channel.type` is one
+of `channel`, `private_channel`, `im`, or `mpim`.
+
 ### Authentication
 
 ```bash

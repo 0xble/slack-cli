@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lox/slack-cli/internal/output"
 	"github.com/lox/slack-cli/internal/slack"
 )
 
@@ -17,8 +18,10 @@ type ThreadReadCmd struct {
 	Channel   string `help:"Channel ID" short:"c"`
 	Timestamp string `help:"Thread timestamp" short:"t"`
 	Limit     int    `help:"Maximum number of replies" default:"100"`
-	Markdown  bool   `help:"Output as markdown" short:"m"`
 	slack.DateFilterFlags
+	Markdown bool `help:"Output as markdown" short:"m" xor:"format"`
+	JSON     bool `help:"Output as pretty JSON array, parent first" short:"j" xor:"format"`
+	JSONL    bool `help:"Output as JSON Lines, parent first" xor:"format"`
 }
 
 func (c *ThreadReadCmd) Run(ctx *Context) error {
@@ -62,6 +65,33 @@ func (c *ThreadReadCmd) Run(ctx *Context) error {
 		return fmt.Errorf("failed to get thread: %w", err)
 	}
 
+	if c.JSON || c.JSONL {
+		var workspace string
+		if c.URL != "" {
+			if host, _, herr := slack.ExtractWorkspaceRef(c.URL); herr == nil {
+				workspace = host
+			}
+		}
+		chRef := output.ChannelRefFromID(resolver, channelID, "")
+		conv := output.MessageConverter{Resolver: resolver, Channel: chRef, Workspace: workspace}
+		if c.JSONL {
+			i := 0
+			return output.EmitJSONLStream(func() (output.Message, bool, error) {
+				if i >= len(replies.Messages) {
+					return output.Message{}, false, nil
+				}
+				m := conv.Convert(replies.Messages[i])
+				i++
+				return m, true, nil
+			})
+		}
+		records := make([]output.Message, 0, len(replies.Messages))
+		for _, m := range replies.Messages {
+			records = append(records, conv.Convert(m))
+		}
+		return output.EmitJSON(records)
+	}
+
 	if c.Markdown {
 		fmt.Print(c.formatRepliesAsMarkdown(replies.Messages, resolver, threadTS))
 		return nil
@@ -69,7 +99,7 @@ func (c *ThreadReadCmd) Run(ctx *Context) error {
 
 	for _, msg := range replies.Messages {
 		user := resolver.ResolveUser(msg.User)
-		fmt.Printf("[%s] %s: %s\n", msg.TS, user, resolver.FormatText(msg.Text))
+		fmt.Printf("[%s] %s: %s\n", msg.TS, user, resolver.FormatText(msg.BodyText()))
 	}
 
 	return nil
@@ -94,7 +124,7 @@ func (c *ThreadReadCmd) formatRepliesAsMarkdown(messages []slack.Message, resolv
 	if hasParent {
 		msg := messages[0]
 		username := resolver.ResolveUser(msg.User)
-		text := resolver.FormatText(msg.Text)
+		text := resolver.FormatText(msg.BodyText())
 		fmt.Fprintf(&sb, "**%s** _%s_\n\n", username, msg.TS)
 		fmt.Fprintf(&sb, "%s\n\n", text)
 		if len(messages) > 1 {
@@ -107,7 +137,7 @@ func (c *ThreadReadCmd) formatRepliesAsMarkdown(messages []slack.Message, resolv
 
 	for _, msg := range messages[start:] {
 		username := resolver.ResolveUser(msg.User)
-		text := resolver.FormatText(msg.Text)
+		text := resolver.FormatText(msg.BodyText())
 
 		fmt.Fprintf(&sb, "> **%s** _%s_\n>\n", username, msg.TS)
 		for _, line := range strings.Split(text, "\n") {

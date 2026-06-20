@@ -72,9 +72,9 @@ func TestResolveDateFilter_LastAndBeforeCombines(t *testing.T) {
 
 func TestResolveDateFilter_ForbiddenCombinations(t *testing.T) {
 	tests := []struct {
-		name                 string
+		name                    string
 		after, before, on, last string
-		wantErr              string
+		wantErr                 string
 	}{
 		{"on with after", "2026-04-01", "", "2026-04-10", "", "--on cannot"},
 		{"on with before", "", "2026-04-15", "2026-04-10", "", "--on cannot"},
@@ -188,14 +188,14 @@ func TestDateFilter_ToSearchOperators(t *testing.T) {
 
 func TestQueryHasDateOperator(t *testing.T) {
 	tests := map[string]bool{
-		"deploy":                       false,
-		"deploy after:2026-04-01":      true,
-		"before:2026-04-10 rollback":   true,
-		"alice on:yesterday":           true,
-		"from:@alice during:april":     true,
-		"says 'after breakfast'":       false, // 'after' without colon+token
-		"mentions beforehand":          false,
-		"multiword after: broken":      false, // after: with empty token should not match
+		"deploy":                     false,
+		"deploy after:2026-04-01":    true,
+		"before:2026-04-10 rollback": true,
+		"alice on:yesterday":         true,
+		"from:@alice during:april":   true,
+		"says 'after breakfast'":     false, // 'after' without colon+token
+		"mentions beforehand":        false,
+		"multiword after: broken":    false, // after: with empty token should not match
 	}
 	for q, want := range tests {
 		got := QueryHasDateOperator(q)
