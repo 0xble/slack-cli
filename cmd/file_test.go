@@ -418,6 +418,33 @@ func TestFileUploadMissingScopeHint(t *testing.T) {
 	}
 }
 
+func TestFileUploadDMMissingScopeHint(t *testing.T) {
+	ctx := testFileContext(func(req *http.Request) (*http.Response, error) {
+		switch req.URL.Path {
+		case "/api/users.list":
+			return fileJSONResponse(req, `{"ok":true,"members":[{"id":"U123","name":"alice"}]}`)
+		case "/api/conversations.open":
+			return fileJSONResponse(req, `{"ok":false,"error":"missing_scope"}`)
+		default:
+			return nil, fmt.Errorf("unexpected path %s", req.URL.Path)
+		}
+	})
+
+	tempDir := t.TempDir()
+	uploadPath := filepath.Join(tempDir, "report.txt")
+	if err := os.WriteFile(uploadPath, []byte("hello"), 0o644); err != nil {
+		t.Fatalf("os.WriteFile returned error: %v", err)
+	}
+
+	err := (&FileUploadCmd{Recipient: "@alice", Path: uploadPath}).Run(ctx)
+	if err == nil {
+		t.Fatalf("expected error")
+	}
+	if !strings.Contains(err.Error(), "im:write") {
+		t.Fatalf("expected im:write guidance, got %v", err)
+	}
+}
+
 func TestFileDeleteRun(t *testing.T) {
 	ctx := testFileContext(func(req *http.Request) (*http.Response, error) {
 		switch req.URL.Path {

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -143,6 +144,11 @@ func (c *FileUploadCmd) Run(ctx *Context) error {
 	if err != nil {
 		err = ctx.augmentChannelNotFoundError("", err)
 		err = ctx.augmentCrossWorkspaceChannelHint("", err)
+		if scope := missingScopeForRecipientResolution(err, c.Recipient); scope != "" {
+			if wrapped := wrapMissingScope(err, scope); wrapped != nil {
+				return wrapped
+			}
+		}
 		if wrapped := wrapMissingScope(err, "the scopes required for this recipient"); wrapped != nil {
 			return wrapped
 		}
@@ -226,6 +232,28 @@ func formatConversationTargetLabel(target *slack.ConversationTarget) string {
 		return "#" + target.Name
 	}
 	return target.ChannelID
+}
+
+func missingScopeForRecipientResolution(err error, recipient string) string {
+	var apiErr *slack.APIError
+	if !errors.As(err, &apiErr) || apiErr.Code != "missing_scope" {
+		return ""
+	}
+
+	switch apiErr.Method {
+	case "conversations.open":
+		return "im:write"
+	case "users.info", "users.list":
+		return "users:read"
+	case "conversations.info", "conversations.list":
+		return "channels:read/groups:read"
+	}
+
+	trimmed := strings.TrimSpace(recipient)
+	if strings.HasPrefix(trimmed, "@") || strings.HasPrefix(trimmed, "U") {
+		return "im:write"
+	}
+	return ""
 }
 
 func formatFileListLine(file slack.File) string {
