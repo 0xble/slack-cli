@@ -79,3 +79,45 @@ func TestThreadReadMarkdownFlagParses(t *testing.T) {
 		t.Fatalf("expected --markdown to parse for thread read, got %v", err)
 	}
 }
+
+func TestSearchLastFlagDoesNotParse(t *testing.T) {
+	cli := &CLI{}
+	parser, err := kong.New(cli, kong.Vars{"version": "test"})
+	if err != nil {
+		t.Fatalf("failed to build parser: %v", err)
+	}
+
+	_, err = parser.Parse([]string{"search", "deploy", "--last", "1d"})
+	if err == nil {
+		t.Fatalf("expected --last to be rejected for search")
+	}
+	if !strings.Contains(err.Error(), "--last") {
+		t.Fatalf("expected error to mention --last, got %v", err)
+	}
+}
+
+func TestChannelReadLastFlagParses(t *testing.T) {
+	cli := &CLI{}
+	parser, err := kong.New(cli, kong.Vars{"version": "test"})
+	if err != nil {
+		t.Fatalf("failed to build parser: %v", err)
+	}
+
+	_, err = parser.Parse([]string{"channel", "read", "C123", "--last", "1d"})
+	if err != nil {
+		t.Fatalf("expected --last to parse for channel read, got %v", err)
+	}
+}
+
+func TestThreadReadLastFlagParses(t *testing.T) {
+	cli := &CLI{}
+	parser, err := kong.New(cli, kong.Vars{"version": "test"})
+	if err != nil {
+		t.Fatalf("failed to build parser: %v", err)
+	}
+
+	_, err = parser.Parse([]string{"thread", "read", "-c", "C123", "-t", "1234567890.123456", "--last", "1d"})
+	if err != nil {
+		t.Fatalf("expected --last to parse for thread read, got %v", err)
+	}
+}

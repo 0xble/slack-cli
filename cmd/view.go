@@ -194,7 +194,7 @@ func (c *ViewCmd) buildMarkdown(client *slack.Client, channel *slack.Channel, in
 }
 
 func (c *ViewCmd) buildThreadMarkdown(sb *strings.Builder, client *slack.Client, info *slackURLInfo) {
-	replies, err := client.GetConversationReplies(info.Channel, info.ThreadTS, c.Limit)
+	replies, err := client.GetConversationReplies(slack.RepliesParams{Channel: info.Channel, ThreadTS: info.ThreadTS, Limit: c.Limit})
 	if err != nil {
 		fmt.Fprintf(sb, "Error: %v\n", err)
 		return
@@ -228,7 +228,7 @@ func (c *ViewCmd) buildThreadMarkdown(sb *strings.Builder, client *slack.Client,
 }
 
 func (c *ViewCmd) buildChannelMarkdown(sb *strings.Builder, client *slack.Client, channelID string) {
-	history, err := client.GetConversationHistory(channelID, c.Limit)
+	history, err := client.GetConversationHistory(slack.HistoryParams{Channel: channelID, Limit: c.Limit})
 	if err != nil {
 		fmt.Fprintf(sb, "Error: %v\n", err)
 		return
@@ -393,7 +393,7 @@ func (c *ViewCmd) renderGhosttyView(client *slack.Client, channel *slack.Channel
 }
 
 func (c *ViewCmd) renderGhosttyThread(client *slack.Client, info *slackURLInfo) error {
-	replies, err := client.GetConversationReplies(info.Channel, info.ThreadTS, c.Limit)
+	replies, err := client.GetConversationReplies(slack.RepliesParams{Channel: info.Channel, ThreadTS: info.ThreadTS, Limit: c.Limit})
 	if err != nil {
 		return fmt.Errorf("failed to get thread: %w", err)
 	}
@@ -437,7 +437,7 @@ func (c *ViewCmd) renderGhosttyThread(client *slack.Client, info *slackURLInfo) 
 }
 
 func (c *ViewCmd) renderGhosttyChannel(client *slack.Client, channelID string) error {
-	history, err := client.GetConversationHistory(channelID, c.Limit)
+	history, err := client.GetConversationHistory(slack.HistoryParams{Channel: channelID, Limit: c.Limit})
 	if err != nil {
 		return fmt.Errorf("failed to get channel history: %w", err)
 	}

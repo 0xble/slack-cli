@@ -1,0 +1,275 @@
+package slack
+
+import (
+	"errors"
+	"fmt"
+	"regexp"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/araddon/dateparse"
+)
+
+// DateFilter captures a resolved time window for commands that accept
+// --after / --before / --on / --last flags. The zero value means
+// "no filter".
+type DateFilter struct {
+	After  time.Time
+	Before time.Time
+}
+
+// DateFilterFlags is the shared kong flag block for commands that accept
+// --after / --before / --on / --last. Embed it into a command struct to
+// avoid duplicating the flag definitions, then call Resolve to produce a
+// DateFilter.
+type DateFilterFlags struct {
+	After  string `help:"Only match messages on or after DATE (UTC; e.g. 2026-04-18, Apr 18 2026)" xor:"after-last,after-on"`
+	Before string `help:"Only match messages on or before DATE (UTC; e.g. 2026-04-18, Apr 18 2026)" xor:"before-on"`
+	On     string `help:"Only match messages on DATE (UTC; e.g. 2026-04-18, Apr 18 2026)" xor:"after-on,before-on,on-last"`
+	Last   string `help:"Only match messages from the last DURATION (e.g. 45d, 12h, 2w)" xor:"after-last,on-last"`
+}
+
+// Resolve validates the embedded flags and returns a filter anchored at now.
+func (f DateFilterFlags) Resolve(now time.Time) (DateFilter, error) {
+	return ResolveDateFilter(f.After, f.Before, f.On, f.Last, now)
+}
+
+// SearchDateFilterFlags is the shared kong flag block for Slack search.
+// Search only supports calendar-date operators, so rolling --last windows are
+// intentionally omitted instead of being silently broadened.
+type SearchDateFilterFlags struct {
+	After  string `help:"Only match messages on or after DATE (UTC; e.g. 2026-04-18, Apr 18 2026)" xor:"after-on"`
+	Before string `help:"Only match messages on or before DATE (UTC; e.g. 2026-04-18, Apr 18 2026)" xor:"before-on"`
+	On     string `help:"Only match messages on DATE (UTC; e.g. 2026-04-18, Apr 18 2026)" xor:"after-on,before-on"`
+}
+
+// Resolve validates the embedded search flags and returns a calendar filter.
+func (f SearchDateFilterFlags) Resolve(now time.Time) (DateFilter, error) {
+	return ResolveSearchDateFilter(f.After, f.Before, f.On, now)
+}
+
+// IsZero returns true when neither bound is set.
+func (d DateFilter) IsZero() bool {
+	return d.After.IsZero() && d.Before.IsZero()
+}
+
+// ResolveSearchDateFilter validates date filters expressible by Slack search.
+func ResolveSearchDateFilter(after, before, on string, now time.Time) (DateFilter, error) {
+	if strings.TrimSpace(on) != "" && (strings.TrimSpace(after) != "" || strings.TrimSpace(before) != "") {
+		return DateFilter{}, fmt.Errorf("--on cannot be combined with --after or --before")
+	}
+	return ResolveDateFilter(after, before, on, "", now)
+}
+
+// ResolveDateFilter validates the flag combination and returns a filter
+// anchored at now.
+//
+//   - after and before are flexible absolute dates (UTC midnight for After,
+//     end-of-day for Before).
+//   - on is a flexible absolute date, expanded to the full UTC day.
+//   - last is a duration ending at now. Go's time.ParseDuration units plus
+//     d (24h) and w (7d) are accepted.
+//
+// Mutually exclusive: on with any other flag; last with after.
+func ResolveDateFilter(after, before, on, last string, now time.Time) (DateFilter, error) {
+	after = strings.TrimSpace(after)
+	before = strings.TrimSpace(before)
+	on = strings.TrimSpace(on)
+	last = strings.TrimSpace(last)
+
+	if on != "" && (after != "" || before != "" || last != "") {
+		return DateFilter{}, fmt.Errorf("--on cannot be combined with --after, --before, or --last")
+	}
+	if last != "" && after != "" {
+		return DateFilter{}, fmt.Errorf("--last cannot be combined with --after")
+	}
+
+	var f DateFilter
+
+	if on != "" {
+		day, err := parseDateStart(on)
+		if err != nil {
+			return DateFilter{}, fmt.Errorf("--on: %w", err)
+		}
+		f.After = day
+		f.Before = day.Add(24*time.Hour - time.Nanosecond)
+		return f, nil
+	}
+
+	if after != "" {
+		t, err := parseDateStart(after)
+		if err != nil {
+			return DateFilter{}, fmt.Errorf("--after: %w", err)
+		}
+		f.After = t
+	}
+	if before != "" {
+		t, err := parseDateStart(before)
+		if err != nil {
+			return DateFilter{}, fmt.Errorf("--before: %w", err)
+		}
+		// Inclusive upper bound: end of that day.
+		f.Before = t.Add(24*time.Hour - time.Nanosecond)
+	}
+	if last != "" {
+		d, err := parseExtendedDuration(last)
+		if err != nil {
+			return DateFilter{}, fmt.Errorf("--last: %w", err)
+		}
+		if d <= 0 {
+			return DateFilter{}, fmt.Errorf("--last: duration must be positive")
+		}
+		f.After = now.Add(-d)
+	}
+
+	if !f.After.IsZero() && !f.Before.IsZero() && f.Before.Before(f.After) {
+		return DateFilter{}, fmt.Errorf("--before is earlier than --after")
+	}
+
+	return f, nil
+}
+
+// ToTimestampParams converts the filter into (oldest, latest) Slack
+// timestamp strings suitable for conversations.history / conversations.replies.
+// Empty string means "unset". Timestamps are emitted with microsecond
+// precision so an inclusive end-of-day bound like 23:59:59.999999999 does
+// not get truncated to the start of the last second.
+func (d DateFilter) ToTimestampParams() (oldest, latest string) {
+	if !d.After.IsZero() {
+		oldest = slackTimestamp(d.After)
+	}
+	if !d.Before.IsZero() {
+		latest = slackTimestamp(d.Before)
+	}
+	return oldest, latest
+}
+
+// ToSearchOperators converts the filter into Slack search-query operators
+// (after:YYYY-MM-DD, before:YYYY-MM-DD). Returns empty string when unset.
+// Slack's search operators take calendar dates, not timestamps.
+func (d DateFilter) ToSearchOperators() string {
+	var parts []string
+	if !d.After.IsZero() {
+		// Slack's after: operator is exclusive, so subtract a day to get
+		// an inclusive lower bound that matches the flag's documented semantics.
+		parts = append(parts, "after:"+d.After.Add(-24*time.Hour).UTC().Format("2006-01-02"))
+	}
+	if !d.Before.IsZero() {
+		// before: is also exclusive; add a day for inclusivity.
+		parts = append(parts, "before:"+d.Before.Add(24*time.Hour).UTC().Format("2006-01-02"))
+	}
+	return strings.Join(parts, " ")
+}
+
+// QueryHasDateOperator reports whether the given search query already
+// contains an after:, before:, on:, or during: operator. Used by the search
+// command to reject silent overrides when the user passes both a query
+// operator and a flag.
+var (
+	dateOperatorPattern         = regexp.MustCompile(`(?i)(^|\s)(after|before|on|during):\S`)
+	yearFirstDatePattern        = regexp.MustCompile(`^\d{4}[-/]\d{1,2}[-/]\d{1,2}$`)
+	dayMonthYearDatePattern     = regexp.MustCompile(`(?i)^\d{1,2}(st|nd|rd|th)?\s+[a-z]{3,}\.?,?\s+\d{4}$`)
+	monthDayYearDatePattern     = regexp.MustCompile(`(?i)^[a-z]{3,}\.?\s+\d{1,2}(st|nd|rd|th)?,?\s+\d{4}$`)
+	ambiguousNumericDatePattern = regexp.MustCompile(`^\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4}$`)
+	dateTimeInputPattern        = regexp.MustCompile(`(?i)(T\d{1,2}:|\b\d{1,2}:\d{2}(:\d{2})?|\b\d{1,2}\s*(am|pm)\b)`)
+)
+
+func QueryHasDateOperator(query string) bool {
+	return dateOperatorPattern.MatchString(query)
+}
+
+func dateLayoutHasTime(layout string) bool {
+	for _, token := range []string{"15", "04", "05", "PM", "pm", "MST", "Z07", "-07", ".000"} {
+		if strings.Contains(layout, token) {
+			return true
+		}
+	}
+	return false
+}
+
+func validateCalendarDateShape(s string) error {
+	if yearFirstDatePattern.MatchString(s) ||
+		dayMonthYearDatePattern.MatchString(s) ||
+		monthDayYearDatePattern.MatchString(s) {
+		return nil
+	}
+	if ambiguousNumericDatePattern.MatchString(s) {
+		return fmt.Errorf("ambiguous date %q; use an unambiguous format like 2026-04-18 or 18 Apr 2026", s)
+	}
+	if dateTimeInputPattern.MatchString(s) {
+		return fmt.Errorf("date %q must not include a time; use a calendar date like 2026-04-18 or 18 Apr 2026", s)
+	}
+	return fmt.Errorf("could not parse date %q; use an unambiguous calendar-day format like 2026-04-18, 18 Apr 2026, or Apr 18 2026", s)
+}
+
+func parseDateStart(s string) (time.Time, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return time.Time{}, fmt.Errorf("empty date")
+	}
+	if err := validateCalendarDateShape(s); err != nil {
+		return time.Time{}, err
+	}
+
+	if _, err := dateparse.ParseStrict(s); err != nil {
+		if errors.Is(err, dateparse.ErrAmbiguousMMDD) {
+			return time.Time{}, fmt.Errorf("ambiguous date %q; use an unambiguous format like 2026-04-18 or 18 Apr 2026", s)
+		}
+		return time.Time{}, fmt.Errorf("could not parse date %q; use a format like 2026-04-18, 18 Apr 2026, or Apr 18 2026", s)
+	}
+
+	layout, err := dateparse.ParseFormat(s)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("could not parse date %q: %w", s, err)
+	}
+	if dateLayoutHasTime(layout) {
+		return time.Time{}, fmt.Errorf("date %q must not include a time; use a calendar date like 2026-04-18 or 18 Apr 2026", s)
+	}
+
+	t, err := dateparse.ParseIn(s, time.UTC)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("could not parse date %q: %w", s, err)
+	}
+	year, month, day := t.In(time.UTC).Date()
+	return time.Date(year, month, day, 0, 0, 0, 0, time.UTC), nil
+}
+
+// parseExtendedDuration extends time.ParseDuration with d (24h) and w (7d).
+func parseExtendedDuration(s string) (time.Duration, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0, fmt.Errorf("empty duration")
+	}
+
+	// Pull out any terminal d/w suffix and convert to hours before handing
+	// off to time.ParseDuration.
+	if len(s) > 1 {
+		last := s[len(s)-1]
+		if last == 'd' || last == 'w' {
+			numStr := s[:len(s)-1]
+			n, err := strconv.ParseFloat(numStr, 64)
+			if err != nil {
+				return 0, fmt.Errorf("invalid duration %q", s)
+			}
+			var hours float64
+			switch last {
+			case 'd':
+				hours = n * 24
+			case 'w':
+				hours = n * 24 * 7
+			}
+			return time.Duration(hours * float64(time.Hour)), nil
+		}
+	}
+
+	return time.ParseDuration(s)
+}
+
+// slackTimestamp formats t as a Slack seconds.microseconds string so
+// fractional bounds (e.g. 23:59:59.999999 for an inclusive end-of-day)
+// survive round-tripping through conversations.history params.
+func slackTimestamp(t time.Time) string {
+	micros := t.Nanosecond() / 1000
+	return fmt.Sprintf("%d.%06d", t.Unix(), micros)
+}

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/lox/slack-cli/internal/output"
 	"github.com/lox/slack-cli/internal/slack"
@@ -63,11 +64,12 @@ func (c *ChannelListCmd) Run(ctx *Context) error {
 }
 
 type ChannelReadCmd struct {
-	Channel  string `arg:"" help:"Channel name, ID, or Slack URL"`
-	Limit    int    `help:"Number of messages to show" default:"20"`
-	Markdown bool   `help:"Output as markdown" short:"m" xor:"format"`
-	JSON     bool   `help:"Output as pretty JSON array, oldest first" short:"j" xor:"format"`
-	JSONL    bool   `help:"Output as JSON Lines, oldest first" xor:"format"`
+	Channel string `arg:"" help:"Channel name, ID, or Slack URL"`
+	Limit   int    `help:"Number of messages to show" default:"20"`
+	slack.DateFilterFlags
+	Markdown bool `help:"Output as markdown" short:"m" xor:"format"`
+	JSON     bool `help:"Output as pretty JSON array, oldest first" short:"j" xor:"format"`
+	JSONL    bool `help:"Output as JSON Lines, oldest first" xor:"format"`
 }
 
 func (c *ChannelReadCmd) Run(ctx *Context) error {
@@ -81,6 +83,11 @@ func (c *ChannelReadCmd) Run(ctx *Context) error {
 		return err
 	}
 	resolver := slack.NewResolver(client)
+
+	filter, err := c.Resolve(time.Now())
+	if err != nil {
+		return err
+	}
 
 	channelName := ""
 	// Resolve channel name to ID if needed
@@ -99,7 +106,14 @@ func (c *ChannelReadCmd) Run(ctx *Context) error {
 		}
 	}
 
-	history, err := client.GetConversationHistory(channelID, c.Limit)
+	oldest, latest := filter.ToTimestampParams()
+	history, err := client.GetConversationHistory(slack.HistoryParams{
+		Channel:   channelID,
+		Limit:     c.Limit,
+		Oldest:    oldest,
+		Latest:    latest,
+		Inclusive: !filter.IsZero(),
+	})
 	if err != nil {
 		err = ctx.augmentChannelNotFoundError(urlHint, err)
 		err = ctx.augmentCrossWorkspaceChannelHint(urlHint, err)

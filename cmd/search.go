@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"fmt"
+	"strings"
+	"time"
 
 	"github.com/lox/slack-cli/internal/output"
 	"github.com/lox/slack-cli/internal/slack"
@@ -10,11 +12,27 @@ import (
 type SearchCmd struct {
 	Query string `arg:"" help:"Search query (supports Slack search syntax: from:@user, in:#channel, etc.)"`
 	Limit int    `help:"Maximum number of results" default:"20"`
-	JSON  bool   `help:"Output as pretty JSON array" short:"j" xor:"format"`
-	JSONL bool   `help:"Output as JSON Lines, one match per line" xor:"format"`
+	slack.SearchDateFilterFlags
+	JSON  bool `help:"Output as pretty JSON array" short:"j" xor:"format"`
+	JSONL bool `help:"Output as JSON Lines, one match per line" xor:"format"`
 }
 
 func (c *SearchCmd) Run(ctx *Context) error {
+	filter, err := c.Resolve(time.Now())
+	if err != nil {
+		return err
+	}
+
+	query := c.Query
+	if !filter.IsZero() {
+		if slack.QueryHasDateOperator(query) {
+			return fmt.Errorf("query already contains an after:/before:/on:/during: operator; drop it or drop the flag")
+		}
+		if ops := filter.ToSearchOperators(); ops != "" {
+			query = strings.TrimSpace(query + " " + ops)
+		}
+	}
+
 	client, err := ctx.NewClient("")
 	if err != nil {
 		return err
@@ -27,7 +45,7 @@ func (c *SearchCmd) Run(ctx *Context) error {
 			resolver.DisableChannelInfoLookup()
 		}
 	}
-	resp, err := client.SearchMessages(c.Query, c.Limit)
+	resp, err := client.SearchMessages(query, c.Limit)
 	if err != nil {
 		return fmt.Errorf("search failed: %w", err)
 	}

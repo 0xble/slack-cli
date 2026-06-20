@@ -97,9 +97,9 @@ slack-cli view <url> --inline-images auto|always|never
 
 ```bash
 slack-cli channel list                  # List channels you're in
-slack-cli channel read #general         # Read recent messages
+slack-cli channel read "#general"       # Read recent messages
 slack-cli channel read <url> --markdown # Read by URL as markdown
-slack-cli channel info #general         # Show channel details
+slack-cli channel info "#general"       # Show channel details
 ```
 
 ### Search
@@ -115,6 +115,21 @@ slack-cli search "in:#engineering bug"  # Search in channel
 slack-cli thread read <url>                      # Read thread by URL
 slack-cli thread read <url> --markdown           # Read thread as markdown
 slack-cli thread read -c C123 -t 1234567890.123  # Read by channel+ts
+```
+
+### Date filters
+
+`search` accepts calendar filters: `--after`, `--before`, and `--on`.
+`channel read` and `thread read` also accept rolling windows with `--last`.
+Dates are interpreted in UTC and accept unambiguous calendar-day formats such
+as `YYYY-MM-DD`, `YYYY/MM/DD`, `18 Apr 2026`, and `Apr 18 2026`. Timestamps,
+partial dates, and other inputs with times are rejected.
+
+```bash
+slack-cli search "deploy" --after 2026-04-01 --before 2026-04-30
+slack-cli search "incident" --on "Apr 18 2026"
+slack-cli channel read "#general" --last 2w
+slack-cli thread read <url> --on "18 Apr 2026" --json
 ```
 
 ### Users
@@ -134,7 +149,7 @@ consumption: `search`, `channel read`, `channel list`, `channel info`,
 
 ```bash
 slack-cli search "deploy" --limit 100 --jsonl | jq -c 'select(.channel.type == "channel")'
-slack-cli channel read #general --limit 50 --json
+slack-cli channel read "#general" --limit 50 --json
 slack-cli thread read <url> --json
 slack-cli channel list --json
 slack-cli user list --jsonl

@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/lox/slack-cli/internal/output"
 	"github.com/lox/slack-cli/internal/slack"
@@ -17,9 +18,10 @@ type ThreadReadCmd struct {
 	Channel   string `help:"Channel ID" short:"c"`
 	Timestamp string `help:"Thread timestamp" short:"t"`
 	Limit     int    `help:"Maximum number of replies" default:"100"`
-	Markdown  bool   `help:"Output as markdown" short:"m" xor:"format"`
-	JSON      bool   `help:"Output as pretty JSON array, parent first" short:"j" xor:"format"`
-	JSONL     bool   `help:"Output as JSON Lines, parent first" xor:"format"`
+	slack.DateFilterFlags
+	Markdown bool `help:"Output as markdown" short:"m" xor:"format"`
+	JSON     bool `help:"Output as pretty JSON array, parent first" short:"j" xor:"format"`
+	JSONL    bool `help:"Output as JSON Lines, parent first" xor:"format"`
 }
 
 func (c *ThreadReadCmd) Run(ctx *Context) error {
@@ -38,13 +40,26 @@ func (c *ThreadReadCmd) Run(ctx *Context) error {
 		return fmt.Errorf("provide either a thread URL or --channel and --timestamp")
 	}
 
+	filter, err := c.Resolve(time.Now())
+	if err != nil {
+		return err
+	}
+
 	client, err := ctx.NewClient(c.URL)
 	if err != nil {
 		return err
 	}
 	resolver := slack.NewResolver(client)
 
-	replies, err := client.GetConversationReplies(channelID, threadTS, c.Limit)
+	oldest, latest := filter.ToTimestampParams()
+	replies, err := client.GetConversationReplies(slack.RepliesParams{
+		Channel:   channelID,
+		ThreadTS:  threadTS,
+		Limit:     c.Limit,
+		Oldest:    oldest,
+		Latest:    latest,
+		Inclusive: !filter.IsZero(),
+	})
 	if err != nil {
 		err = c.augmentReadError(ctx, err)
 		return fmt.Errorf("failed to get thread: %w", err)
@@ -78,7 +93,7 @@ func (c *ThreadReadCmd) Run(ctx *Context) error {
 	}
 
 	if c.Markdown {
-		fmt.Print(c.formatRepliesAsMarkdown(replies.Messages, resolver))
+		fmt.Print(c.formatRepliesAsMarkdown(replies.Messages, resolver, threadTS))
 		return nil
 	}
 
@@ -96,21 +111,33 @@ func (c *ThreadReadCmd) augmentReadError(ctx *Context, err error) error {
 	return err
 }
 
-func (c *ThreadReadCmd) formatRepliesAsMarkdown(messages []slack.Message, resolver *slack.Resolver) string {
+func (c *ThreadReadCmd) formatRepliesAsMarkdown(messages []slack.Message, resolver *slack.Resolver, threadTS string) string {
 	var sb strings.Builder
 
-	for i, msg := range messages {
+	// If the first returned message is the thread parent, render it as the
+	// root and the rest as quoted replies. Slack accepts reply timestamps for
+	// conversations.replies and may still return the parent first, so this
+	// checks the returned message shape rather than only the requested ts.
+	hasParent := len(messages) > 0 && isThreadParentMessage(messages[0], threadTS)
+
+	start := 0
+	if hasParent {
+		msg := messages[0]
 		username := resolver.ResolveUser(msg.User)
 		text := resolver.FormatText(msg.BodyText())
-
-		if i == 0 {
-			fmt.Fprintf(&sb, "**%s** _%s_\n\n", username, msg.TS)
-			fmt.Fprintf(&sb, "%s\n\n", text)
-			if len(messages) > 1 {
-				fmt.Fprintf(&sb, "---\n\n**%d replies**\n\n", len(messages)-1)
-			}
-			continue
+		fmt.Fprintf(&sb, "**%s** _%s_\n\n", username, msg.TS)
+		fmt.Fprintf(&sb, "%s\n\n", text)
+		if len(messages) > 1 {
+			fmt.Fprintf(&sb, "---\n\n**%d replies**\n\n", len(messages)-1)
 		}
+		start = 1
+	} else if len(messages) > 0 {
+		fmt.Fprintf(&sb, "_Thread parent not returned; showing %d matching replies._\n\n", len(messages))
+	}
+
+	for _, msg := range messages[start:] {
+		username := resolver.ResolveUser(msg.User)
+		text := resolver.FormatText(msg.BodyText())
 
 		fmt.Fprintf(&sb, "> **%s** _%s_\n>\n", username, msg.TS)
 		for _, line := range strings.Split(text, "\n") {
@@ -120,4 +147,17 @@ func (c *ThreadReadCmd) formatRepliesAsMarkdown(messages []slack.Message, resolv
 	}
 
 	return sb.String()
+}
+
+func isThreadParentMessage(msg slack.Message, requestedTS string) bool {
+	if msg.TS == "" {
+		return false
+	}
+	if msg.ThreadTS != "" {
+		return msg.ThreadTS == msg.TS
+	}
+	if msg.ReplyCount > 0 {
+		return true
+	}
+	return msg.TS == requestedTS
 }

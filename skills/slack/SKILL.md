@@ -53,8 +53,23 @@ slack-cli search "in:#channel-name keyword"
 ### Read a channel
 
 ```bash
-slack-cli channel read #general --limit 50
+slack-cli channel read "#general" --limit 50
 slack-cli channel read "https://workspace.slack.com/archives/C123" --markdown
+```
+
+### Filter by date
+
+`search` supports calendar filters: `--after`, `--before`, and `--on`.
+`channel read` and `thread read` also support rolling windows with `--last`.
+Dates are interpreted in UTC and accept unambiguous calendar-day formats such
+as `YYYY-MM-DD`, `YYYY/MM/DD`, `18 Apr 2026`, and `Apr 18 2026`. Timestamps,
+partial dates, and other inputs with times are rejected.
+
+```bash
+slack-cli search "deploy" --after 2026-04-01 --before 2026-04-30
+slack-cli search "incident" --on "Apr 18 2026"
+slack-cli channel read "#general" --last 2w
+slack-cli thread read "$URL" --on "18 Apr 2026" --json
 ```
 
 ### Machine-readable output (--json / --jsonl)
@@ -73,7 +88,7 @@ of `channel`, `private_channel`, `im`, or `mpim`.
 
 ```bash
 slack-cli search "deploy" --limit 20 --jsonl | jq -c 'select(.channel.type == "channel")'
-slack-cli channel read #general --limit 50 --json
+slack-cli channel read "#general" --limit 50 --json
 slack-cli thread read "$URL" --json
 slack-cli channel list --json
 slack-cli user list --json
