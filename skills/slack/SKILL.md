@@ -1,6 +1,6 @@
 ---
 name: slack
-description: Read Slack messages, threads, and channels via CLI. Use when asked to view Slack URLs, search Slack, or look up Slack users.
+description: Read Slack messages, threads, channels, users, and files via CLI. Use when asked to view Slack URLs, search Slack, look up users, or work with Slack files.
 allowed-tools: Bash(slack-cli:*)
 ---
 
@@ -58,15 +58,53 @@ slack-cli search "in:#channel-name keyword"
 ### Read a channel
 
 ```bash
-slack-cli channel read #general --limit 50
+slack-cli channel read "#general" --limit 50
 slack-cli channel read "https://workspace.slack.com/archives/C123" --markdown
 ```
 
 ### Upload a file
 
 ```bash
-slack-cli file upload #general ./report.txt
+slack-cli file upload "#general" ./report.txt
 slack-cli file upload @alice ./report.txt --comment "latest version"
+```
+
+### Filter by date
+
+`search` supports calendar filters: `--after`, `--before`, and `--on`.
+`channel read` and `thread read` also support rolling windows with `--last`.
+Dates are interpreted in UTC and accept unambiguous calendar-day formats such
+as `YYYY-MM-DD`, `YYYY/MM/DD`, `18 Apr 2026`, and `Apr 18 2026`. Timestamps,
+partial dates, and other inputs with times are rejected.
+
+```bash
+slack-cli search "deploy" --after 2026-04-01 --before 2026-04-30
+slack-cli search "incident" --on "Apr 18 2026"
+slack-cli channel read "#general" --last 2w
+slack-cli thread read "$URL" --on "18 Apr 2026" --json
+```
+
+### Machine-readable output (--json / --jsonl)
+
+These commands support `--json` (pretty array or object) and `--jsonl` (one
+record per line): `search`, `channel read`, `channel list`, `channel info`,
+`thread read`, `user list`, `user info`.
+
+Message records emit a full normalized shape for machines: `ts`,
+`thread_ts` (when Slack provides it), `type`, `subtype` (when set, e.g.
+`bot_message`, `channel_join`, `channel_archive`, `huddle_thread`),
+`user`, `user_id`, `text` (resolver-formatted), `text_raw`, `channel`,
+`workspace`, `permalink`, `reply_count`, and `files` when those fields are
+available. When Slack channel metadata is available, `channel.type` is one
+of `channel`, `private_channel`, `im`, or `mpim`.
+
+```bash
+slack-cli search "deploy" --limit 20 --jsonl | jq -c 'select(.channel.type == "channel")'
+slack-cli channel read "#general" --limit 50 --json
+slack-cli thread read "$URL" --json
+slack-cli channel list --json
+slack-cli user list --json
+slack-cli channel info C123 --json
 ```
 
 ## Discovering Options
@@ -81,8 +119,9 @@ slack-cli search --help
 
 ## Notes
 
-- Use `--markdown` with `view`, `thread read`, or `channel read` when you need structured output
+- Use `--markdown` with `view`, `thread read`, or `channel read` when you need structured terminal output
 - `file upload` accepts channel names, conversation IDs, `@username`, or `U123`
+- Use `--json` / `--jsonl` for agent consumption; `--jsonl` pipes cleanly into `jq -c`
 - Thread URLs with `thread_ts` parameter are automatically detected
 - Channel names can include or omit the `#` prefix
 - If you see `channel_not_found` and multiple workspaces are configured, retry with `--workspace <workspace>`

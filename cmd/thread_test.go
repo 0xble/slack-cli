@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/lox/slack-cli/internal/config"
+	"github.com/lox/slack-cli/internal/slack"
 )
 
 func TestThreadReadCmdAugmentReadError(t *testing.T) {
@@ -39,4 +40,73 @@ func TestThreadReadCmdAugmentReadError(t *testing.T) {
 			t.Fatalf("expected workspace configuration hint, got %q", err.Error())
 		}
 	})
+}
+
+func TestThreadReadCmdFormatMarkdownTreatsReturnedParentAsRoot(t *testing.T) {
+	cmd := &ThreadReadCmd{}
+	resolver := slack.NewResolver(slack.NewClient(""))
+	messages := []slack.Message{
+		{
+			TS:         "100.000001",
+			ThreadTS:   "100.000001",
+			Text:       "parent",
+			ReplyCount: 1,
+		},
+		{
+			TS:       "101.000001",
+			ThreadTS: "100.000001",
+			Text:     "reply",
+		},
+	}
+
+	out := cmd.formatRepliesAsMarkdown(messages, resolver, "101.000001")
+	if strings.Contains(out, "Thread parent not returned") {
+		t.Fatalf("expected returned parent to render as root, got %q", out)
+	}
+	if !strings.Contains(out, "**1 replies**") {
+		t.Fatalf("expected reply count, got %q", out)
+	}
+	if !strings.Contains(out, "parent") || !strings.Contains(out, "> reply") {
+		t.Fatalf("expected parent and quoted reply, got %q", out)
+	}
+}
+
+func TestThreadReadCmdFormatMarkdownReportsFilteredParent(t *testing.T) {
+	cmd := &ThreadReadCmd{}
+	resolver := slack.NewResolver(slack.NewClient(""))
+	messages := []slack.Message{
+		{
+			TS:       "101.000001",
+			ThreadTS: "100.000001",
+			Text:     "reply",
+		},
+	}
+
+	out := cmd.formatRepliesAsMarkdown(messages, resolver, "100.000001")
+	if !strings.Contains(out, "Thread parent not returned; showing 1 matching replies") {
+		t.Fatalf("expected parent-missing note, got %q", out)
+	}
+	if !strings.Contains(out, "> reply") {
+		t.Fatalf("expected reply to be quoted, got %q", out)
+	}
+}
+
+func TestThreadReadCmdFormatMarkdownReportsReplyTimestampWithoutParent(t *testing.T) {
+	cmd := &ThreadReadCmd{}
+	resolver := slack.NewResolver(slack.NewClient(""))
+	messages := []slack.Message{
+		{
+			TS:       "101.000001",
+			ThreadTS: "100.000001",
+			Text:     "reply",
+		},
+	}
+
+	out := cmd.formatRepliesAsMarkdown(messages, resolver, "101.000001")
+	if !strings.Contains(out, "Thread parent not returned; showing 1 matching replies") {
+		t.Fatalf("expected parent-missing note for reply timestamp result, got %q", out)
+	}
+	if !strings.Contains(out, "> reply") {
+		t.Fatalf("expected reply to be quoted, got %q", out)
+	}
 }

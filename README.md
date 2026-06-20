@@ -97,9 +97,9 @@ slack-cli view <url> --inline-images auto|always|never
 
 ```bash
 slack-cli channel list                  # List channels you're in
-slack-cli channel read #general         # Read recent messages
+slack-cli channel read "#general"       # Read recent messages
 slack-cli channel read <url> --markdown # Read by URL as markdown
-slack-cli channel info #general         # Show channel details
+slack-cli channel info "#general"       # Show channel details
 ```
 
 ### Files
@@ -108,7 +108,7 @@ slack-cli channel info #general         # Show channel details
 slack-cli file list                             # List recent files
 slack-cli file info F123                        # Show file metadata
 slack-cli file download F123                    # Download to the current directory
-slack-cli file upload #general ./report.txt     # Upload and share a file
+slack-cli file upload "#general" ./report.txt   # Upload and share a file
 slack-cli file upload @alice ./report.txt       # Upload into a DM
 slack-cli file delete F123                      # Delete a file
 ```
@@ -128,6 +128,21 @@ slack-cli thread read <url> --markdown           # Read thread as markdown
 slack-cli thread read -c C123 -t 1234567890.123  # Read by channel+ts
 ```
 
+### Date filters
+
+`search` accepts calendar filters: `--after`, `--before`, and `--on`.
+`channel read` and `thread read` also accept rolling windows with `--last`.
+Dates are interpreted in UTC and accept unambiguous calendar-day formats such
+as `YYYY-MM-DD`, `YYYY/MM/DD`, `18 Apr 2026`, and `Apr 18 2026`. Timestamps,
+partial dates, and other inputs with times are rejected.
+
+```bash
+slack-cli search "deploy" --after 2026-04-01 --before 2026-04-30
+slack-cli search "incident" --on "Apr 18 2026"
+slack-cli channel read "#general" --last 2w
+slack-cli thread read <url> --on "18 Apr 2026" --json
+```
+
 ### Users
 
 ```bash
@@ -135,6 +150,30 @@ slack-cli user list                     # List workspace users
 slack-cli user info U123                # Show user details
 slack-cli user info alice@acme.com      # Lookup by email
 ```
+
+### Machine-readable output
+
+Read, search, list, and info commands accept `--json` (pretty JSON array or
+object) and `--jsonl` (one JSON object per line) for scripting and agent
+consumption: `search`, `channel read`, `channel list`, `channel info`,
+`thread read`, `user list`, `user info`.
+
+```bash
+slack-cli search "deploy" --limit 100 --jsonl | jq -c 'select(.channel.type == "channel")'
+slack-cli channel read "#general" --limit 50 --json
+slack-cli thread read <url> --json
+slack-cli channel list --json
+slack-cli user list --jsonl
+slack-cli channel info C123 --json
+```
+
+Message records emit a full normalized shape for machines: `ts`,
+`thread_ts` (when Slack provides it), `type`, `subtype` (when set, e.g.
+`bot_message`, `channel_join`, `channel_archive`, `huddle_thread`),
+`user`, `user_id`, `text` (resolver-formatted), `text_raw`, `channel`,
+`workspace`, `permalink`, `reply_count`, and `files` when those fields are
+available. When Slack channel metadata is available, `channel.type` is one
+of `channel`, `private_channel`, `im`, or `mpim`.
 
 ### Authentication
 

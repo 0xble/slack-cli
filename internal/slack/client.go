@@ -246,13 +246,43 @@ func (c *Client) AuthTest() (*AuthTestResponse, error) {
 	return &result, nil
 }
 
-func (c *Client) GetConversationReplies(channel, threadTS string, limit int) (*RepliesResponse, error) {
-	params := url.Values{}
-	params.Set("channel", channel)
-	params.Set("ts", threadTS)
+type HistoryParams struct {
+	Channel   string
+	Limit     int
+	Oldest    string
+	Latest    string
+	Inclusive bool
+}
+
+type RepliesParams struct {
+	Channel   string
+	ThreadTS  string
+	Limit     int
+	Oldest    string
+	Latest    string
+	Inclusive bool
+}
+
+func applyHistoryParams(v url.Values, channel string, limit int, oldest, latest string, inclusive bool) {
+	v.Set("channel", channel)
 	if limit > 0 {
-		params.Set("limit", fmt.Sprintf("%d", limit))
+		v.Set("limit", fmt.Sprintf("%d", limit))
 	}
+	if oldest != "" {
+		v.Set("oldest", oldest)
+	}
+	if latest != "" {
+		v.Set("latest", latest)
+	}
+	if inclusive {
+		v.Set("inclusive", "true")
+	}
+}
+
+func (c *Client) GetConversationReplies(p RepliesParams) (*RepliesResponse, error) {
+	params := url.Values{}
+	applyHistoryParams(params, p.Channel, p.Limit, p.Oldest, p.Latest, p.Inclusive)
+	params.Set("ts", p.ThreadTS)
 
 	body, err := c.request("conversations.replies", params)
 	if err != nil {
@@ -267,12 +297,9 @@ func (c *Client) GetConversationReplies(channel, threadTS string, limit int) (*R
 	return &result, nil
 }
 
-func (c *Client) GetConversationHistory(channel string, limit int) (*HistoryResponse, error) {
+func (c *Client) GetConversationHistory(p HistoryParams) (*HistoryResponse, error) {
 	params := url.Values{}
-	params.Set("channel", channel)
-	if limit > 0 {
-		params.Set("limit", fmt.Sprintf("%d", limit))
-	}
+	applyHistoryParams(params, p.Channel, p.Limit, p.Oldest, p.Latest, p.Inclusive)
 
 	body, err := c.request("conversations.history", params)
 	if err != nil {

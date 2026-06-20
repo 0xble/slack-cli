@@ -2,6 +2,7 @@ package slack
 
 type Message struct {
 	Type        string       `json:"type"`
+	Subtype     string       `json:"subtype,omitempty"`
 	User        string       `json:"user"`
 	Text        string       `json:"text"`
 	TS          string       `json:"ts"`
@@ -50,6 +51,7 @@ type Attachment struct {
 
 type Block struct {
 	Type     string     `json:"type"`
+	Text     *BlockText `json:"text,omitempty"`
 	ImageURL string     `json:"image_url,omitempty"`
 	AltText  string     `json:"alt_text,omitempty"`
 	Title    *BlockText `json:"title,omitempty"`
@@ -141,6 +143,7 @@ type SearchResponse struct {
 
 type SearchMatch struct {
 	Type      string        `json:"type"`
+	Subtype   string        `json:"subtype,omitempty"`
 	User      string        `json:"user"`
 	Username  string        `json:"username"`
 	Text      string        `json:"text"`
