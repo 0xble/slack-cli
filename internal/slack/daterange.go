@@ -166,7 +166,14 @@ func (d DateFilter) ToSearchOperators() string {
 // contains an after:, before:, on:, or during: operator. Used by the search
 // command to reject silent overrides when the user passes both a query
 // operator and a flag.
-var dateOperatorPattern = regexp.MustCompile(`(?i)(^|\s)(after|before|on|during):\S`)
+var (
+	dateOperatorPattern         = regexp.MustCompile(`(?i)(^|\s)(after|before|on|during):\S`)
+	yearFirstDatePattern        = regexp.MustCompile(`^\d{4}[-/]\d{1,2}[-/]\d{1,2}$`)
+	dayMonthYearDatePattern     = regexp.MustCompile(`(?i)^\d{1,2}(st|nd|rd|th)?\s+[a-z]{3,}\.?,?\s+\d{4}$`)
+	monthDayYearDatePattern     = regexp.MustCompile(`(?i)^[a-z]{3,}\.?\s+\d{1,2}(st|nd|rd|th)?,?\s+\d{4}$`)
+	ambiguousNumericDatePattern = regexp.MustCompile(`^\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4}$`)
+	dateTimeInputPattern        = regexp.MustCompile(`(?i)(T\d{1,2}:|\b\d{1,2}:\d{2}(:\d{2})?|\b\d{1,2}\s*(am|pm)\b)`)
+)
 
 func QueryHasDateOperator(query string) bool {
 	return dateOperatorPattern.MatchString(query)
@@ -181,10 +188,28 @@ func dateLayoutHasTime(layout string) bool {
 	return false
 }
 
+func validateCalendarDateShape(s string) error {
+	if yearFirstDatePattern.MatchString(s) ||
+		dayMonthYearDatePattern.MatchString(s) ||
+		monthDayYearDatePattern.MatchString(s) {
+		return nil
+	}
+	if ambiguousNumericDatePattern.MatchString(s) {
+		return fmt.Errorf("ambiguous date %q; use an unambiguous format like 2026-04-18 or 18 Apr 2026", s)
+	}
+	if dateTimeInputPattern.MatchString(s) {
+		return fmt.Errorf("date %q must not include a time; use a calendar date like 2026-04-18 or 18 Apr 2026", s)
+	}
+	return fmt.Errorf("could not parse date %q; use an unambiguous calendar-day format like 2026-04-18, 18 Apr 2026, or Apr 18 2026", s)
+}
+
 func parseDateStart(s string) (time.Time, error) {
 	s = strings.TrimSpace(s)
 	if s == "" {
 		return time.Time{}, fmt.Errorf("empty date")
+	}
+	if err := validateCalendarDateShape(s); err != nil {
+		return time.Time{}, err
 	}
 
 	if _, err := dateparse.ParseStrict(s); err != nil {

@@ -60,6 +60,21 @@ func TestResolveDateFilter_RejectsDateTimeInputs(t *testing.T) {
 	}
 }
 
+func TestResolveDateFilter_RejectsNonCalendarDayInputs(t *testing.T) {
+	for _, input := range []string{
+		"1773973307481399",
+		"2014",
+		"April 2026",
+	} {
+		t.Run(input, func(t *testing.T) {
+			_, err := ResolveDateFilter(input, "", "", "", refNow)
+			if err == nil || !strings.Contains(err.Error(), "calendar-day format") {
+				t.Fatalf("expected calendar-day rejection for %q, got %v", input, err)
+			}
+		})
+	}
+}
+
 func TestResolveDateFilter_Before(t *testing.T) {
 	f, err := ResolveDateFilter("", "2026-04-15", "", "", refNow)
 	if err != nil {
