@@ -29,7 +29,7 @@ func ResolveConversationTarget(client *Client, recipient string) (*ConversationT
 	switch {
 	case strings.HasPrefix(trimmed, "D"):
 		return &ConversationTarget{ChannelID: trimmed, IsDM: true}, nil
-	case strings.HasPrefix(trimmed, "U"):
+	case isSlackUserID(trimmed):
 		user, err := client.GetUserInfo(trimmed)
 		if err != nil {
 			return nil, err
@@ -55,6 +55,10 @@ func ResolveConversationTarget(client *Client, recipient string) (*ConversationT
 	default:
 		return resolveChannelTargetByName(client, trimmed)
 	}
+}
+
+func isSlackUserID(id string) bool {
+	return strings.HasPrefix(id, "U") || strings.HasPrefix(id, "W")
 }
 
 func openDMTarget(client *Client, user *User) (*ConversationTarget, error) {

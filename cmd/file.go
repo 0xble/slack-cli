@@ -250,7 +250,7 @@ func missingScopeForRecipientResolution(err error, recipient string) string {
 	}
 
 	trimmed := strings.TrimSpace(recipient)
-	if strings.HasPrefix(trimmed, "@") || strings.HasPrefix(trimmed, "U") {
+	if strings.HasPrefix(trimmed, "@") || strings.HasPrefix(trimmed, "U") || strings.HasPrefix(trimmed, "W") {
 		return "im:write"
 	}
 	return ""
