@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lox/slack-cli/internal/output"
 	"github.com/lox/slack-cli/internal/slack"
 )
 
@@ -19,7 +20,9 @@ type FileCmd struct {
 }
 
 type FileListCmd struct {
-	Limit int `help:"Maximum number of files to list" default:"20" short:"n"`
+	Limit int  `help:"Maximum number of files to list" default:"20" short:"n"`
+	JSON  bool `help:"Output as pretty JSON array" short:"j" xor:"format"`
+	JSONL bool `help:"Output as JSON Lines, one file per line" xor:"format"`
 }
 
 func (c *FileListCmd) Run(ctx *Context) error {
@@ -33,6 +36,26 @@ func (c *FileListCmd) Run(ctx *Context) error {
 		return fmt.Errorf("failed to list files: %w", err)
 	}
 
+	if c.JSONL {
+		i := 0
+		return output.EmitJSONLStream(func() (output.File, bool, error) {
+			if i >= len(resp.Files) {
+				return output.File{}, false, nil
+			}
+			file := output.ToFile(resp.Files[i])
+			i++
+			return file, true, nil
+		})
+	}
+
+	if c.JSON {
+		records := make([]output.File, 0, len(resp.Files))
+		for _, file := range resp.Files {
+			records = append(records, output.ToFile(file))
+		}
+		return output.EmitJSON(records)
+	}
+
 	for _, file := range resp.Files {
 		fmt.Println(formatFileListLine(file))
 	}
@@ -42,6 +65,8 @@ func (c *FileListCmd) Run(ctx *Context) error {
 
 type FileInfoCmd struct {
 	FileID string `arg:"" help:"File ID"`
+	JSON   bool   `help:"Output as pretty JSON object" short:"j" xor:"format"`
+	JSONL  bool   `help:"Output as a single JSON Lines record" xor:"format"`
 }
 
 func (c *FileInfoCmd) Run(ctx *Context) error {
@@ -53,6 +78,14 @@ func (c *FileInfoCmd) Run(ctx *Context) error {
 	file, err := client.GetFileInfo(c.FileID)
 	if err != nil {
 		return fmt.Errorf("failed to get file info: %w", err)
+	}
+
+	rec := output.ToFile(*file)
+	if c.JSONL {
+		return output.EmitJSONL([]output.File{rec})
+	}
+	if c.JSON {
+		return output.EmitJSON(rec)
 	}
 
 	printFileInfo(file)

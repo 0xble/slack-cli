@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -36,6 +37,38 @@ func TestFileListRun(t *testing.T) {
 	}
 }
 
+func TestFileListRunJSON(t *testing.T) {
+	ctx := testFileContext(func(req *http.Request) (*http.Response, error) {
+		switch req.URL.Path {
+		case "/api/files.list":
+			return fileJSONResponse(req, `{"ok":true,"files":[{"id":"F123","name":"report.txt","title":"Weekly Report","size":1536,"pretty_type":"Plain Text","url_private_download":"https://files.slack.com/download/F123"}]}`)
+		default:
+			return nil, fmt.Errorf("unexpected path %s", req.URL.Path)
+		}
+	})
+
+	output := captureStdout(t, func() {
+		if err := (&FileListCmd{Limit: 20, JSON: true}).Run(ctx); err != nil {
+			t.Fatalf("FileListCmd.Run returned error: %v", err)
+		}
+	})
+
+	var records []struct {
+		ID                 string `json:"id"`
+		Title              string `json:"title"`
+		URLPrivateDownload string `json:"url_private_download"`
+	}
+	if err := json.Unmarshal([]byte(output), &records); err != nil {
+		t.Fatalf("failed to decode JSON output: %v\n%s", err, output)
+	}
+	if len(records) != 1 || records[0].ID != "F123" || records[0].Title != "Weekly Report" {
+		t.Fatalf("unexpected records: %+v", records)
+	}
+	if records[0].URLPrivateDownload == "" {
+		t.Fatalf("expected private download URL in JSON record: %+v", records[0])
+	}
+}
+
 func TestFileInfoRun(t *testing.T) {
 	ctx := testFileContext(func(req *http.Request) (*http.Response, error) {
 		switch req.URL.Path {
@@ -54,6 +87,38 @@ func TestFileInfoRun(t *testing.T) {
 
 	if !strings.Contains(output, "ID: F123") || !strings.Contains(output, "Type: Plain Text") || !strings.Contains(output, "Permalink: https://example.slack.com/files/F123") {
 		t.Fatalf("unexpected output: %q", output)
+	}
+}
+
+func TestFileInfoRunJSONL(t *testing.T) {
+	ctx := testFileContext(func(req *http.Request) (*http.Response, error) {
+		switch req.URL.Path {
+		case "/api/files.info":
+			return fileJSONResponse(req, `{"ok":true,"file":{"id":"F123","name":"report.txt","title":"Weekly Report","size":1536,"pretty_type":"Plain Text","permalink":"https://example.slack.com/files/F123"}}`)
+		default:
+			return nil, fmt.Errorf("unexpected path %s", req.URL.Path)
+		}
+	})
+
+	output := captureStdout(t, func() {
+		if err := (&FileInfoCmd{FileID: "F123", JSONL: true}).Run(ctx); err != nil {
+			t.Fatalf("FileInfoCmd.Run returned error: %v", err)
+		}
+	})
+
+	lines := strings.Split(strings.TrimSpace(output), "\n")
+	if len(lines) != 1 {
+		t.Fatalf("expected one JSONL record, got %d: %q", len(lines), output)
+	}
+	var record struct {
+		ID        string `json:"id"`
+		Permalink string `json:"permalink"`
+	}
+	if err := json.Unmarshal([]byte(lines[0]), &record); err != nil {
+		t.Fatalf("failed to decode JSONL output: %v\n%s", err, output)
+	}
+	if record.ID != "F123" || record.Permalink == "" {
+		t.Fatalf("unexpected record: %+v", record)
 	}
 }
 

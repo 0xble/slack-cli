@@ -88,7 +88,7 @@ slack-cli thread read "$URL" --on "18 Apr 2026" --json
 
 These commands support `--json` (pretty array or object) and `--jsonl` (one
 record per line): `search`, `channel read`, `channel list`, `channel info`,
-`thread read`, `user list`, `user info`.
+`file list`, `file info`, `thread read`, `user list`, `user info`.
 
 Message records emit a full normalized shape for machines: `ts`,
 `thread_ts` (when Slack provides it), `type`, `subtype` (when set, e.g.
@@ -101,6 +101,7 @@ of `channel`, `private_channel`, `im`, or `mpim`.
 ```bash
 slack-cli search "deploy" --limit 20 --jsonl | jq -c 'select(.channel.type == "channel")'
 slack-cli channel read "#general" --limit 50 --json
+slack-cli file list --limit 20 --jsonl
 slack-cli thread read "$URL" --json
 slack-cli channel list --json
 slack-cli user list --json

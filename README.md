@@ -106,7 +106,9 @@ slack-cli channel info "#general"       # Show channel details
 
 ```bash
 slack-cli file list                             # List recent files
+slack-cli file list --json                      # List recent files as JSON
 slack-cli file info F123                        # Show file metadata
+slack-cli file info F123 --json                 # Show file metadata as JSON
 slack-cli file download F123                    # Download to the current directory
 slack-cli file upload "#general" ./report.txt   # Upload and share a file
 slack-cli file upload @alice ./report.txt       # Upload into a DM
@@ -156,11 +158,12 @@ slack-cli user info alice@acme.com      # Lookup by email
 Read, search, list, and info commands accept `--json` (pretty JSON array or
 object) and `--jsonl` (one JSON object per line) for scripting and agent
 consumption: `search`, `channel read`, `channel list`, `channel info`,
-`thread read`, `user list`, `user info`.
+`file list`, `file info`, `thread read`, `user list`, `user info`.
 
 ```bash
 slack-cli search "deploy" --limit 100 --jsonl | jq -c 'select(.channel.type == "channel")'
 slack-cli channel read "#general" --limit 50 --json
+slack-cli file list --limit 20 --jsonl
 slack-cli thread read <url> --json
 slack-cli channel list --json
 slack-cli user list --jsonl

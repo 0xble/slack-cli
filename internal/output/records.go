@@ -41,6 +41,33 @@ type FileRef struct {
 	Permalink string `json:"permalink,omitempty"`
 }
 
+// File is the shape emitted by file list and file info.
+type File struct {
+	ID                 string   `json:"id"`
+	Created            int64    `json:"created,omitempty"`
+	Timestamp          int64    `json:"timestamp,omitempty"`
+	Name               string   `json:"name,omitempty"`
+	Title              string   `json:"title,omitempty"`
+	Mimetype           string   `json:"mimetype,omitempty"`
+	Filetype           string   `json:"filetype,omitempty"`
+	PrettyType         string   `json:"pretty_type,omitempty"`
+	User               string   `json:"user,omitempty"`
+	Editable           bool     `json:"editable,omitempty"`
+	Size               int      `json:"size,omitempty"`
+	Mode               string   `json:"mode,omitempty"`
+	IsExternal         bool     `json:"is_external,omitempty"`
+	IsPublic           bool     `json:"is_public,omitempty"`
+	PublicURLShared    bool     `json:"public_url_shared,omitempty"`
+	URLPrivate         string   `json:"url_private,omitempty"`
+	URLPrivateDownload string   `json:"url_private_download,omitempty"`
+	Permalink          string   `json:"permalink,omitempty"`
+	PermalinkPublic    string   `json:"permalink_public,omitempty"`
+	Channels           []string `json:"channels,omitempty"`
+	Groups             []string `json:"groups,omitempty"`
+	IMs                []string `json:"ims,omitempty"`
+	FileAccess         string   `json:"file_access,omitempty"`
+}
+
 // Channel is the shape emitted by channel list and channel info.
 type Channel struct {
 	ID         string `json:"id"`
@@ -167,6 +194,35 @@ func ToFileRef(f slack.File) FileRef {
 		Title:     f.Title,
 		Mimetype:  f.Mimetype,
 		Permalink: f.Permalink,
+	}
+}
+
+// ToFile converts a slack.File wire type into the public File record.
+func ToFile(f slack.File) File {
+	return File{
+		ID:                 f.ID,
+		Created:            f.Created,
+		Timestamp:          f.Timestamp,
+		Name:               f.Name,
+		Title:              f.Title,
+		Mimetype:           f.Mimetype,
+		Filetype:           f.Filetype,
+		PrettyType:         f.PrettyType,
+		User:               f.User,
+		Editable:           f.Editable,
+		Size:               f.Size,
+		Mode:               f.Mode,
+		IsExternal:         f.IsExternal,
+		IsPublic:           f.IsPublic,
+		PublicURLShared:    f.PublicURLShared,
+		URLPrivate:         f.URLPrivate,
+		URLPrivateDownload: f.URLPrivateDownload,
+		Permalink:          f.Permalink,
+		PermalinkPublic:    f.PermalinkPublic,
+		Channels:           f.Channels,
+		Groups:             f.Groups,
+		IMs:                f.IMs,
+		FileAccess:         f.FileAccess,
 	}
 }
 
