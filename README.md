@@ -97,9 +97,9 @@ slack-cli view <url> --inline-images auto|always|never
 
 ```bash
 slack-cli channel list                  # List channels you're in
-slack-cli channel read #general         # Read recent messages
+slack-cli channel read "#general"       # Read recent messages
 slack-cli channel read <url> --markdown # Read by URL as markdown
-slack-cli channel info #general         # Show channel details
+slack-cli channel info "#general"       # Show channel details
 ```
 
 ### Search
@@ -128,7 +128,7 @@ partial dates, and other inputs with times are rejected.
 ```bash
 slack-cli search "deploy" --after 2026-04-01 --before 2026-04-30
 slack-cli search "incident" --on "Apr 18 2026"
-slack-cli channel read #general --last 2w
+slack-cli channel read "#general" --last 2w
 slack-cli thread read <url> --on "18 Apr 2026" --json
 ```
 
@@ -149,7 +149,7 @@ consumption: `search`, `channel read`, `channel list`, `channel info`,
 
 ```bash
 slack-cli search "deploy" --limit 100 --jsonl | jq -c 'select(.channel.type == "channel")'
-slack-cli channel read #general --limit 50 --json
+slack-cli channel read "#general" --limit 50 --json
 slack-cli thread read <url> --json
 slack-cli channel list --json
 slack-cli user list --jsonl
