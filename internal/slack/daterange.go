@@ -1,11 +1,14 @@
 package slack
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/araddon/dateparse"
 )
 
 // DateFilter captures a resolved time window for commands that accept
@@ -21,9 +24,9 @@ type DateFilter struct {
 // avoid duplicating the flag definitions, then call Resolve to produce a
 // DateFilter.
 type DateFilterFlags struct {
-	After  string `help:"Only match messages on or after DATE (YYYY-MM-DD, UTC)" xor:"after-last,after-on"`
-	Before string `help:"Only match messages on or before DATE (YYYY-MM-DD, UTC)" xor:"before-on"`
-	On     string `help:"Only match messages on DATE (YYYY-MM-DD, UTC)" xor:"after-on,before-on,on-last"`
+	After  string `help:"Only match messages on or after DATE (UTC; e.g. 2026-04-18, Apr 18 2026)" xor:"after-last,after-on"`
+	Before string `help:"Only match messages on or before DATE (UTC; e.g. 2026-04-18, Apr 18 2026)" xor:"before-on"`
+	On     string `help:"Only match messages on DATE (UTC; e.g. 2026-04-18, Apr 18 2026)" xor:"after-on,before-on,on-last"`
 	Last   string `help:"Only match messages from the last DURATION (e.g. 45d, 12h, 2w)" xor:"after-last,on-last"`
 }
 
@@ -36,9 +39,9 @@ func (f DateFilterFlags) Resolve(now time.Time) (DateFilter, error) {
 // Search only supports calendar-date operators, so rolling --last windows are
 // intentionally omitted instead of being silently broadened.
 type SearchDateFilterFlags struct {
-	After  string `help:"Only match messages on or after DATE (YYYY-MM-DD, UTC)" xor:"after-on"`
-	Before string `help:"Only match messages on or before DATE (YYYY-MM-DD, UTC)" xor:"before-on"`
-	On     string `help:"Only match messages on DATE (YYYY-MM-DD, UTC)" xor:"after-on,before-on"`
+	After  string `help:"Only match messages on or after DATE (UTC; e.g. 2026-04-18, Apr 18 2026)" xor:"after-on"`
+	Before string `help:"Only match messages on or before DATE (UTC; e.g. 2026-04-18, Apr 18 2026)" xor:"before-on"`
+	On     string `help:"Only match messages on DATE (UTC; e.g. 2026-04-18, Apr 18 2026)" xor:"after-on,before-on"`
 }
 
 // Resolve validates the embedded search flags and returns a calendar filter.
@@ -62,9 +65,9 @@ func ResolveSearchDateFilter(after, before, on string, now time.Time) (DateFilte
 // ResolveDateFilter validates the flag combination and returns a filter
 // anchored at now.
 //
-//   - after and before are YYYY-MM-DD (UTC midnight for After, end-of-day for
-//     Before).
-//   - on is YYYY-MM-DD, expanded to the full day.
+//   - after and before are flexible absolute dates (UTC midnight for After,
+//     end-of-day for Before).
+//   - on is a flexible absolute date, expanded to the full UTC day.
 //   - last is a duration ending at now. Go's time.ParseDuration units plus
 //     d (24h) and w (7d) are accepted.
 //
@@ -170,11 +173,24 @@ func QueryHasDateOperator(query string) bool {
 }
 
 func parseDateStart(s string) (time.Time, error) {
-	t, err := time.ParseInLocation("2006-01-02", s, time.UTC)
-	if err != nil {
-		return time.Time{}, fmt.Errorf("expected YYYY-MM-DD, got %q", s)
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return time.Time{}, fmt.Errorf("empty date")
 	}
-	return t, nil
+
+	if _, err := dateparse.ParseStrict(s); err != nil {
+		if errors.Is(err, dateparse.ErrAmbiguousMMDD) {
+			return time.Time{}, fmt.Errorf("ambiguous date %q; use an unambiguous format like 2026-04-18 or 18 Apr 2026", s)
+		}
+		return time.Time{}, fmt.Errorf("could not parse date %q; use a format like 2026-04-18, 18 Apr 2026, or Apr 18 2026", s)
+	}
+
+	t, err := dateparse.ParseIn(s, time.UTC)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("could not parse date %q: %w", s, err)
+	}
+	year, month, day := t.In(time.UTC).Date()
+	return time.Date(year, month, day, 0, 0, 0, 0, time.UTC), nil
 }
 
 // parseExtendedDuration extends time.ParseDuration with d (24h) and w (7d).

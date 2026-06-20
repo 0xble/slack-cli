@@ -121,13 +121,14 @@ slack-cli thread read -c C123 -t 1234567890.123  # Read by channel+ts
 
 `search` accepts calendar filters: `--after`, `--before`, and `--on`.
 `channel read` and `thread read` also accept rolling windows with `--last`.
-Dates are UTC and use `YYYY-MM-DD`.
+Dates are interpreted in UTC and accept unambiguous formats such as
+`YYYY-MM-DD`, `YYYY/MM/DD`, `18 Apr 2026`, and `Apr 18 2026`.
 
 ```bash
 slack-cli search "deploy" --after 2026-04-01 --before 2026-04-30
-slack-cli search "incident" --on 2026-04-18
+slack-cli search "incident" --on "Apr 18 2026"
 slack-cli channel read #general --last 2w
-slack-cli thread read <url> --on 2026-04-18 --json
+slack-cli thread read <url> --on "18 Apr 2026" --json
 ```
 
 ### Users

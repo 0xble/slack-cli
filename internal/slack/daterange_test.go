@@ -22,6 +22,30 @@ func TestResolveDateFilter_After(t *testing.T) {
 	}
 }
 
+func TestResolveDateFilter_FlexibleDateInputs(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{"slash date", "2026/04/01"},
+		{"day month year", "1 Apr 2026"},
+		{"month day year", "April 1, 2026"},
+		{"rfc3339 timestamp", "2026-04-01T15:04:05Z"},
+	}
+	want := time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f, err := ResolveDateFilter(tt.input, "", "", "", refNow)
+			if err != nil {
+				t.Fatalf("ResolveDateFilter(%q) returned error: %v", tt.input, err)
+			}
+			if !f.After.Equal(want) {
+				t.Fatalf("expected After=%v, got %v", want, f.After)
+			}
+		})
+	}
+}
+
 func TestResolveDateFilter_Before(t *testing.T) {
 	f, err := ResolveDateFilter("", "2026-04-15", "", "", refNow)
 	if err != nil {
@@ -95,9 +119,16 @@ func TestResolveDateFilter_ForbiddenCombinations(t *testing.T) {
 }
 
 func TestResolveDateFilter_InvalidDate(t *testing.T) {
-	_, err := ResolveDateFilter("2026/04/01", "", "", "", refNow)
-	if err == nil || !strings.Contains(err.Error(), "YYYY-MM-DD") {
-		t.Fatalf("expected YYYY-MM-DD format error, got %v", err)
+	_, err := ResolveDateFilter("not-a-date", "", "", "", refNow)
+	if err == nil || !strings.Contains(err.Error(), "could not parse date") {
+		t.Fatalf("expected parse error, got %v", err)
+	}
+}
+
+func TestResolveDateFilter_AmbiguousNumericDate(t *testing.T) {
+	_, err := ResolveDateFilter("04/05/2026", "", "", "", refNow)
+	if err == nil || !strings.Contains(err.Error(), "ambiguous date") {
+		t.Fatalf("expected ambiguous date error, got %v", err)
 	}
 }
 
