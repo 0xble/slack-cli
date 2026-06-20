@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 
+	"github.com/lox/slack-cli/internal/output"
 	"github.com/lox/slack-cli/internal/slack"
 )
 
@@ -12,7 +13,9 @@ type UserCmd struct {
 }
 
 type UserListCmd struct {
-	Limit int `help:"Maximum number of users to list" default:"100"`
+	Limit int  `help:"Maximum number of users to list" default:"100"`
+	JSON  bool `help:"Output as pretty JSON array" short:"j" xor:"format"`
+	JSONL bool `help:"Output as JSON Lines, one user per line" xor:"format"`
 }
 
 func (c *UserListCmd) Run(ctx *Context) error {
@@ -23,6 +26,32 @@ func (c *UserListCmd) Run(ctx *Context) error {
 	resp, err := client.ListUsers(c.Limit)
 	if err != nil {
 		return fmt.Errorf("failed to list users: %w", err)
+	}
+
+	if c.JSONL {
+		i := 0
+		return output.EmitJSONLStream(func() (output.User, bool, error) {
+			for i < len(resp.Members) {
+				u := resp.Members[i]
+				i++
+				if u.Deleted || u.IsBot {
+					continue
+				}
+				return output.ToUser(u), true, nil
+			}
+			return output.User{}, false, nil
+		})
+	}
+
+	if c.JSON {
+		records := make([]output.User, 0, len(resp.Members))
+		for _, user := range resp.Members {
+			if user.Deleted || user.IsBot {
+				continue
+			}
+			records = append(records, output.ToUser(user))
+		}
+		return output.EmitJSON(records)
 	}
 
 	for _, user := range resp.Members {
@@ -40,7 +69,9 @@ func (c *UserListCmd) Run(ctx *Context) error {
 }
 
 type UserInfoCmd struct {
-	User string `arg:"" help:"User ID or email"`
+	User  string `arg:"" help:"User ID or email"`
+	JSON  bool   `help:"Output as pretty JSON object" short:"j" xor:"format"`
+	JSONL bool   `help:"Output as a single JSON Lines record" xor:"format"`
 }
 
 func (c *UserInfoCmd) Run(ctx *Context) error {
@@ -60,6 +91,14 @@ func (c *UserInfoCmd) Run(ctx *Context) error {
 
 	if err != nil {
 		return fmt.Errorf("failed to get user info: %w", err)
+	}
+
+	rec := output.ToUser(*user)
+	if c.JSONL {
+		return output.EmitJSONL([]output.User{rec})
+	}
+	if c.JSON {
+		return output.EmitJSON(rec)
 	}
 
 	fmt.Printf("Name: %s\n", user.RealName)

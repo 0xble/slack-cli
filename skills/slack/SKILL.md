@@ -57,6 +57,36 @@ slack-cli channel read #general --limit 50
 slack-cli channel read "https://workspace.slack.com/archives/C123" --markdown
 ```
 
+### Machine-readable output (--json / --jsonl)
+
+These commands support `--json` (pretty array or object) and `--jsonl` (one
+record per line): `search`, `channel read`, `channel list`, `channel info`,
+`thread read`, `user list`, `user info`.
+
+Message records default to a compact shape focused on per-record signal:
+`ts`, `user`, `user_id`, `text` (resolver-formatted), `subtype` (when set,
+e.g. `bot_message`, `channel_join`, `channel_archive`, `huddle_thread`),
+`reply_count`, `files`, and — on `search` — `channel`, `workspace`,
+`permalink`. Fields that only restate the command scope (`type`, the
+scope `channel` on `channel read` / `thread read`, the scope `thread_ts`
+on `thread read`) and duplicates (`text_raw`) are omitted. When Slack channel
+metadata is available, `channel.type` is one of `channel`, `private_channel`,
+`im`, or `mpim`.
+
+Pass `--verbose` (`-V`) to restore the full shape: `type`, `text_raw`,
+and the scope `channel` / `thread_ts` come back for consumers that want
+the wire-complete record.
+
+```bash
+slack-cli search "deploy" --limit 20 --jsonl | jq -c 'select(.channel.type == "channel")'
+slack-cli channel read #general --limit 50 --json
+slack-cli thread read "$URL" --json
+slack-cli channel read #general --limit 50 --json --verbose
+slack-cli channel list --json
+slack-cli user list --json
+slack-cli channel info C123 --json
+```
+
 ## Discovering Options
 
 To see available subcommands and flags, run `--help` on any command:
@@ -69,7 +99,8 @@ slack-cli search --help
 
 ## Notes
 
-- Use `--markdown` with `view`, `thread read`, or `channel read` when you need structured output
+- Use `--markdown` with `view`, `thread read`, or `channel read` when you need structured terminal output
+- Use `--json` / `--jsonl` for agent consumption; `--jsonl` pipes cleanly into `jq -c`
 - Thread URLs with `thread_ts` parameter are automatically detected
 - Channel names can include or omit the `#` prefix
 - If you see `channel_not_found` and multiple workspaces are configured, retry with `--workspace <workspace>`

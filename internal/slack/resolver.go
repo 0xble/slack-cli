@@ -10,18 +10,91 @@ import (
 // and formats message text by replacing mentions and emoji shortcodes.
 // Results are cached for the lifetime of the Resolver.
 type Resolver struct {
-	client       *Client
-	userCache    map[string]string
-	channelCache map[string]string
+	client                    *Client
+	userCache                 map[string]string
+	channelCache              map[string]string
+	channelInfoCache          map[string]*Channel // nil value = negative cache
+	channelInfoLookupDisabled bool
 }
 
 // NewResolver creates a Resolver that uses the given client for API lookups.
 func NewResolver(client *Client) *Resolver {
 	return &Resolver{
-		client:       client,
-		userCache:    make(map[string]string),
-		channelCache: make(map[string]string),
+		client:           client,
+		userCache:        make(map[string]string),
+		channelCache:     make(map[string]string),
+		channelInfoCache: make(map[string]*Channel),
 	}
+}
+
+// PreloadChannels fetches the full conversations list and
+// populates the channel info cache so later ResolveChannelInfo /
+// ResolveChannel / ChannelRefFromID calls do not trigger per-channel API
+// lookups. Callers use this on hot paths (e.g. search results spanning
+// many channels) to avoid an N+1 conversations.info pattern.
+func (r *Resolver) PreloadChannels(types string) error {
+	if r.client == nil {
+		return nil
+	}
+
+	cursor := ""
+	seenCursors := make(map[string]bool)
+	for {
+		resp, err := r.client.ListConversationsPage(types, 1000, cursor)
+		if err != nil {
+			return err
+		}
+		for i := range resp.Channels {
+			ch := resp.Channels[i]
+			r.channelInfoCache[ch.ID] = &ch
+			if ch.Name != "" {
+				r.channelCache[ch.ID] = ch.Name
+			}
+		}
+
+		cursor = strings.TrimSpace(resp.ResponseMetadata.NextCursor)
+		if cursor == "" {
+			return nil
+		}
+		if seenCursors[cursor] {
+			return nil
+		}
+		seenCursors[cursor] = true
+	}
+}
+
+// DisableChannelInfoLookup prevents lazy conversations.info lookups while
+// still allowing already-cached channel metadata to be used.
+func (r *Resolver) DisableChannelInfoLookup() {
+	r.channelInfoLookupDisabled = true
+}
+
+// ResolveChannelInfo returns the full Channel record for the given ID,
+// cached for the Resolver's lifetime. Returns nil if the lookup fails
+// (for example because of missing scope or an unknown ID), which lets
+// callers fall back to best-effort inference.
+func (r *Resolver) ResolveChannelInfo(channelID string) *Channel {
+	if channelID == "" {
+		return nil
+	}
+	if info, ok := r.channelInfoCache[channelID]; ok {
+		return info
+	}
+	if r.channelInfoLookupDisabled || r.client == nil {
+		return nil
+	}
+
+	channel, err := r.client.GetConversationInfo(channelID)
+	if err != nil {
+		r.channelInfoCache[channelID] = nil
+		return nil
+	}
+
+	r.channelInfoCache[channelID] = channel
+	if channel.Name != "" {
+		r.channelCache[channelID] = channel.Name
+	}
+	return channel
 }
 
 // ResolveUser returns a display name for the given user ID.

@@ -234,6 +234,10 @@ func (c *Client) SearchMessages(query string, count int) (*SearchResponse, error
 }
 
 func (c *Client) ListConversations(types string, limit int) (*ConversationsResponse, error) {
+	return c.ListConversationsPage(types, limit, "")
+}
+
+func (c *Client) ListConversationsPage(types string, limit int, cursor string) (*ConversationsResponse, error) {
 	params := url.Values{}
 	if types != "" {
 		params.Set("types", types)
@@ -242,6 +246,9 @@ func (c *Client) ListConversations(types string, limit int) (*ConversationsRespo
 	}
 	if limit > 0 {
 		params.Set("limit", fmt.Sprintf("%d", limit))
+	}
+	if strings.TrimSpace(cursor) != "" {
+		params.Set("cursor", cursor)
 	}
 
 	body, err := c.request("conversations.list", params)

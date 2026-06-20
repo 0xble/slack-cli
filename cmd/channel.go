@@ -2,8 +2,10 @@ package cmd
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
+	"github.com/lox/slack-cli/internal/output"
 	"github.com/lox/slack-cli/internal/slack"
 )
 
@@ -14,7 +16,9 @@ type ChannelCmd struct {
 }
 
 type ChannelListCmd struct {
-	Limit int `help:"Maximum number of channels to list" default:"100"`
+	Limit int  `help:"Maximum number of channels to list" default:"100"`
+	JSON  bool `help:"Output as pretty JSON array" short:"j" xor:"format"`
+	JSONL bool `help:"Output as JSON Lines, one channel per line" xor:"format"`
 }
 
 func (c *ChannelListCmd) Run(ctx *Context) error {
@@ -25,6 +29,26 @@ func (c *ChannelListCmd) Run(ctx *Context) error {
 	resp, err := client.ListConversations("public_channel,private_channel", c.Limit)
 	if err != nil {
 		return fmt.Errorf("failed to list channels: %w", err)
+	}
+
+	if c.JSONL {
+		i := 0
+		return output.EmitJSONLStream(func() (output.Channel, bool, error) {
+			if i >= len(resp.Channels) {
+				return output.Channel{}, false, nil
+			}
+			ch := output.ToChannel(resp.Channels[i])
+			i++
+			return ch, true, nil
+		})
+	}
+
+	if c.JSON {
+		records := make([]output.Channel, 0, len(resp.Channels))
+		for _, ch := range resp.Channels {
+			records = append(records, output.ToChannel(ch))
+		}
+		return output.EmitJSON(records)
 	}
 
 	for _, ch := range resp.Channels {
@@ -41,7 +65,10 @@ func (c *ChannelListCmd) Run(ctx *Context) error {
 type ChannelReadCmd struct {
 	Channel  string `arg:"" help:"Channel name, ID, or Slack URL"`
 	Limit    int    `help:"Number of messages to show" default:"20"`
-	Markdown bool   `help:"Output as markdown" short:"m"`
+	Markdown bool   `help:"Output as markdown" short:"m" xor:"format"`
+	JSON     bool   `help:"Output as pretty JSON array, oldest first" short:"j" xor:"format"`
+	JSONL    bool   `help:"Output as JSON Lines, oldest first" xor:"format"`
+	Verbose  bool   `help:"Emit full JSON records (restore type, text_raw, and scope channel)" short:"V"`
 }
 
 func (c *ChannelReadCmd) Run(ctx *Context) error {
@@ -56,6 +83,7 @@ func (c *ChannelReadCmd) Run(ctx *Context) error {
 	}
 	resolver := slack.NewResolver(client)
 
+	channelName := ""
 	// Resolve channel name to ID if needed
 	if !isSlackChannelID(channelID) {
 		// Try to find by name
@@ -65,6 +93,7 @@ func (c *ChannelReadCmd) Run(ctx *Context) error {
 		}
 		for _, ch := range resp.Channels {
 			if ch.Name == channelID {
+				channelName = ch.Name
 				channelID = ch.ID
 				break
 			}
@@ -76,6 +105,25 @@ func (c *ChannelReadCmd) Run(ctx *Context) error {
 		err = ctx.augmentChannelNotFoundError(urlHint, err)
 		err = ctx.augmentCrossWorkspaceChannelHint(urlHint, err)
 		return fmt.Errorf("failed to get channel history: %w", err)
+	}
+
+	if c.JSON || c.JSONL {
+		chRef := output.ChannelRefFromID(resolver, channelID, channelName)
+		conv := output.MessageConverter{Resolver: resolver, Channel: chRef, Verbose: c.Verbose}
+		ordered := slices.Clone(history.Messages)
+		slices.Reverse(ordered)
+		if c.JSONL {
+			i := 0
+			return output.EmitJSONLStream(func() (output.Message, bool, error) {
+				if i >= len(ordered) {
+					return output.Message{}, false, nil
+				}
+				m := conv.Convert(ordered[i])
+				i++
+				return m, true, nil
+			})
+		}
+		return output.EmitJSON(conv.ConvertAll(ordered))
 	}
 
 	if c.Markdown {
@@ -116,6 +164,8 @@ func (c *ChannelReadCmd) formatHistoryAsMarkdown(messages []slack.Message, resol
 
 type ChannelInfoCmd struct {
 	Channel string `arg:"" help:"Channel name, ID, or Slack URL"`
+	JSON    bool   `help:"Output as pretty JSON object" short:"j" xor:"format"`
+	JSONL   bool   `help:"Output as a single JSON Lines record" xor:"format"`
 }
 
 func (c *ChannelInfoCmd) Run(ctx *Context) error {
@@ -147,6 +197,14 @@ func (c *ChannelInfoCmd) Run(ctx *Context) error {
 		err = ctx.augmentChannelNotFoundError(urlHint, err)
 		err = ctx.augmentCrossWorkspaceChannelHint(urlHint, err)
 		return fmt.Errorf("failed to get channel info: %w", err)
+	}
+
+	rec := output.ToChannel(*info)
+	if c.JSONL {
+		return output.EmitJSONL([]output.Channel{rec})
+	}
+	if c.JSON {
+		return output.EmitJSON(rec)
 	}
 
 	fmt.Printf("Name: #%s\n", info.Name)
@@ -183,3 +241,4 @@ func parseChannelReference(channel string) (channelID string, urlHint string, er
 func isSlackChannelID(channelID string) bool {
 	return strings.HasPrefix(channelID, "C") || strings.HasPrefix(channelID, "G") || strings.HasPrefix(channelID, "D")
 }
+
