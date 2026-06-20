@@ -114,11 +114,11 @@ func (c *ThreadReadCmd) augmentReadError(ctx *Context, err error) error {
 func (c *ThreadReadCmd) formatRepliesAsMarkdown(messages []slack.Message, resolver *slack.Resolver, threadTS string) string {
 	var sb strings.Builder
 
-	// If the first message is the thread parent, render it as the root
-	// and the rest as quoted replies. If a date filter excluded the
-	// parent (messages[0].TS != threadTS), render everything as replies
-	// with a note so the count and block labels stay accurate.
-	hasParent := len(messages) > 0 && messages[0].TS == threadTS
+	// If the first returned message is the thread parent, render it as the
+	// root and the rest as quoted replies. Slack accepts reply timestamps for
+	// conversations.replies and may still return the parent first, so this
+	// checks the returned message shape rather than only the requested ts.
+	hasParent := len(messages) > 0 && isThreadParentMessage(messages[0], threadTS)
 
 	start := 0
 	if hasParent {
@@ -132,7 +132,7 @@ func (c *ThreadReadCmd) formatRepliesAsMarkdown(messages []slack.Message, resolv
 		}
 		start = 1
 	} else if len(messages) > 0 {
-		fmt.Fprintf(&sb, "_Thread parent filtered out; showing %d matching replies._\n\n", len(messages))
+		fmt.Fprintf(&sb, "_Thread parent not returned; showing %d matching replies._\n\n", len(messages))
 	}
 
 	for _, msg := range messages[start:] {
@@ -147,4 +147,17 @@ func (c *ThreadReadCmd) formatRepliesAsMarkdown(messages []slack.Message, resolv
 	}
 
 	return sb.String()
+}
+
+func isThreadParentMessage(msg slack.Message, requestedTS string) bool {
+	if msg.TS == "" {
+		return false
+	}
+	if msg.ThreadTS != "" {
+		return msg.ThreadTS == msg.TS
+	}
+	if msg.ReplyCount > 0 {
+		return true
+	}
+	return msg.TS == requestedTS
 }
