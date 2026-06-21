@@ -420,11 +420,11 @@ func (c *Client) ListFiles(p ListFilesParams) (*FilesListResponse, error) {
 	if strings.TrimSpace(p.ChannelID) != "" {
 		params.Set("channel", p.ChannelID)
 	}
-	if strings.TrimSpace(params.TSFrom) != "" {
-		values.Set("ts_from", strings.TrimSpace(params.TSFrom))
+	if strings.TrimSpace(p.TSFrom) != "" {
+		params.Set("ts_from", strings.TrimSpace(p.TSFrom))
 	}
-	if strings.TrimSpace(params.TSTo) != "" {
-		values.Set("ts_to", strings.TrimSpace(params.TSTo))
+	if strings.TrimSpace(p.TSTo) != "" {
+		params.Set("ts_to", strings.TrimSpace(p.TSTo))
 	}
 
 	body, err := c.request("files.list", params)
