@@ -102,6 +102,19 @@ slack-cli channel read <url> --markdown # Read by URL as markdown
 slack-cli channel info "#general"       # Show channel details
 ```
 
+### Files
+
+```bash
+slack-cli file list                             # List recent files
+slack-cli file list --json                      # List recent files as JSON
+slack-cli file info F123                        # Show file metadata
+slack-cli file info F123 --json                 # Show file metadata as JSON
+slack-cli file download F123                    # Download to the current directory
+slack-cli file upload "#general" ./report.txt   # Upload and share a file
+slack-cli file upload @alice ./report.txt       # Upload into a DM
+slack-cli file delete F123                      # Delete a file
+```
+
 ### Search
 
 ```bash
@@ -145,11 +158,12 @@ slack-cli user info alice@acme.com      # Lookup by email
 Read, search, list, and info commands accept `--json` (pretty JSON array or
 object) and `--jsonl` (one JSON object per line) for scripting and agent
 consumption: `search`, `channel read`, `channel list`, `channel info`,
-`thread read`, `user list`, `user info`.
+`file list`, `file info`, `thread read`, `user list`, `user info`.
 
 ```bash
 slack-cli search "deploy" --limit 100 --jsonl | jq -c 'select(.channel.type == "channel")'
 slack-cli channel read "#general" --limit 50 --json
+slack-cli file list --limit 20 --jsonl
 slack-cli thread read <url> --json
 slack-cli channel list --json
 slack-cli user list --jsonl
@@ -206,10 +220,12 @@ The included manifest requests these user token scopes:
 - `channels:history` - Read public channel messages
 - `channels:read` - List public channels
 - `files:read` - Read file metadata and download private file/image URLs
+- `files:write` - Upload and delete files
 - `groups:history` - Read private channel messages
 - `groups:read` - List private channels
 - `im:history` - Read direct message history
 - `im:read` - Access direct message metadata
+- `im:write` - Open direct messages for DM-targeted file uploads
 - `mpim:history` - Read multi-party direct message history
 - `mpim:read` - Access multi-party direct message metadata
 - `search:read` - Search messages

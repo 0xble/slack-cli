@@ -1,12 +1,12 @@
 ---
 name: slack
-description: Read Slack messages, threads, and channels via CLI. Use when asked to view Slack URLs, search Slack, or look up Slack users.
+description: Read Slack messages, threads, channels, users, and files via CLI. Use when asked to view Slack URLs, search Slack, look up users, or work with Slack files.
 allowed-tools: Bash(slack-cli:*)
 ---
 
 # Slack CLI
 
-A CLI for reading Slack content - messages, threads, channels, and users.
+A CLI for reading Slack content, searching messages, browsing users, and working with files.
 
 ## Installation
 
@@ -28,6 +28,11 @@ slack-cli search <query>      # Search messages
 slack-cli channel list        # List channels you're a member of
 slack-cli channel read        # Read recent messages from a channel name, ID, or URL
 slack-cli channel info        # Show channel information by name, ID, or URL
+slack-cli file list           # List recent files
+slack-cli file info           # Show file metadata
+slack-cli file download       # Download a file by ID
+slack-cli file upload         # Upload and share a file
+slack-cli file delete         # Delete a file by ID
 slack-cli thread read         # Read a thread by URL or channel+timestamp (supports --markdown)
 slack-cli user list           # List users in the workspace
 slack-cli user info           # Show user information
@@ -57,6 +62,13 @@ slack-cli channel read "#general" --limit 50
 slack-cli channel read "https://workspace.slack.com/archives/C123" --markdown
 ```
 
+### Upload a file
+
+```bash
+slack-cli file upload "#general" ./report.txt
+slack-cli file upload @alice ./report.txt --comment "latest version"
+```
+
 ### Filter by date
 
 `search` supports calendar filters: `--after`, `--before`, and `--on`.
@@ -76,7 +88,7 @@ slack-cli thread read "$URL" --on "18 Apr 2026" --json
 
 These commands support `--json` (pretty array or object) and `--jsonl` (one
 record per line): `search`, `channel read`, `channel list`, `channel info`,
-`thread read`, `user list`, `user info`.
+`file list`, `file info`, `thread read`, `user list`, `user info`.
 
 Message records emit a full normalized shape for machines: `ts`,
 `thread_ts` (when Slack provides it), `type`, `subtype` (when set, e.g.
@@ -89,6 +101,7 @@ of `channel`, `private_channel`, `im`, or `mpim`.
 ```bash
 slack-cli search "deploy" --limit 20 --jsonl | jq -c 'select(.channel.type == "channel")'
 slack-cli channel read "#general" --limit 50 --json
+slack-cli file list --limit 20 --jsonl
 slack-cli thread read "$URL" --json
 slack-cli channel list --json
 slack-cli user list --json
@@ -108,6 +121,7 @@ slack-cli search --help
 ## Notes
 
 - Use `--markdown` with `view`, `thread read`, or `channel read` when you need structured terminal output
+- `file upload` accepts channel names, conversation IDs, `@username`, or `U123`
 - Use `--json` / `--jsonl` for agent consumption; `--jsonl` pipes cleanly into `jq -c`
 - Thread URLs with `thread_ts` parameter are automatically detected
 - Channel names can include or omit the `#` prefix

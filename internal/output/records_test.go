@@ -125,6 +125,33 @@ func TestToFileRef(t *testing.T) {
 	}
 }
 
+func TestToFile(t *testing.T) {
+	f := slack.File{
+		ID:                 "F1",
+		Name:               "a.png",
+		Title:              "Hi",
+		Mimetype:           "image/png",
+		Filetype:           "png",
+		PrettyType:         "PNG",
+		User:               "U1",
+		Size:               42,
+		URLPrivateDownload: "https://files.slack.com/download/F1",
+		Permalink:          "https://x.slack.com/files/U1/F1/a.png",
+		Channels:           []string{"C1"},
+		FileAccess:         "visible",
+	}
+	got := ToFile(f)
+	if got.ID != "F1" || got.Name != "a.png" || got.Filetype != "png" {
+		t.Fatalf("unexpected file: %+v", got)
+	}
+	if got.URLPrivateDownload == "" || got.Permalink == "" {
+		t.Fatalf("expected URLs preserved, got %+v", got)
+	}
+	if len(got.Channels) != 1 || got.Channels[0] != "C1" {
+		t.Fatalf("expected channels preserved, got %+v", got.Channels)
+	}
+}
+
 func TestMessageConverterPopulatesFields(t *testing.T) {
 	conv := MessageConverter{
 		Channel:   &ChannelRef{ID: "C1", Name: "general", Type: "channel"},
