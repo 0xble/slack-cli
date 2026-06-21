@@ -56,7 +56,9 @@ func (c *CanvasListCmd) Run(ctx *Context) error {
 		TSTo:      latest,
 	})
 	if err != nil {
-		err = withFilesReadScopeHint(err)
+		if wrapped := wrapMissingScope(err, "files:read"); wrapped != nil {
+			return wrapped
+		}
 		return fmt.Errorf("failed to list canvases: %w", err)
 	}
 
@@ -96,19 +98,21 @@ func (c *CanvasReadCmd) Run(ctx *Context) error {
 
 	file, err := client.GetFileInfo(c.CanvasID)
 	if err != nil {
-		err = withFilesReadScopeHint(err)
+		if wrapped := wrapMissingScope(err, "files:read"); wrapped != nil {
+			return wrapped
+		}
 		return fmt.Errorf("failed to get canvas info: %w", err)
 	}
 	if !slack.IsCanvasFile(*file) {
 		return fmt.Errorf("file is not a canvas: %s", c.CanvasID)
 	}
 
-	fileURL, err := downloadableFileURL(file)
-	if err != nil {
+	fileURL := downloadURLForFile(file)
+	if fileURL == "" {
 		return fmt.Errorf("canvas %s has no downloadable URL", c.CanvasID)
 	}
 
-	body, _, err := client.DownloadPrivateFile(fileURL, downloadSizeLimit(file))
+	body, _, err := client.DownloadPrivateFile(fileURL, canvasDownloadLimit(file))
 	if err != nil {
 		return fmt.Errorf("failed to download canvas: %w", err)
 	}
@@ -151,7 +155,9 @@ func (c *CanvasDeleteCmd) Run(ctx *Context) error {
 	for _, canvasID := range c.CanvasIDs {
 		file, err := client.GetFileInfo(canvasID)
 		if err != nil {
-			err = withFilesReadScopeHint(err)
+			if wrapped := wrapMissingScope(err, "files:read"); wrapped != nil {
+				return wrapped
+			}
 			return fmt.Errorf("failed to get canvas info: %w", err)
 		}
 		if !slack.IsCanvasFile(*file) {
@@ -159,7 +165,9 @@ func (c *CanvasDeleteCmd) Run(ctx *Context) error {
 		}
 
 		if err := client.DeleteFile(canvasID); err != nil {
-			err = withFilesWriteScopeHint(err)
+			if wrapped := wrapMissingScope(err, "files:write"); wrapped != nil {
+				return wrapped
+			}
 			return fmt.Errorf("failed to delete canvas %s: %w", canvasID, err)
 		}
 		fmt.Printf("Deleted canvas %s\n", canvasID)
@@ -223,4 +231,11 @@ func canvasUserDisplayName(user slack.User) string {
 		}
 	}
 	return "unknown"
+}
+
+func canvasDownloadLimit(file *slack.File) int {
+	if file != nil && file.Size > 0 {
+		return file.Size + 1
+	}
+	return 50 * 1024 * 1024
 }
