@@ -126,7 +126,8 @@ printf 'Questions:\n\n1. First\n2. Second' \
   | slack-cli message send "#general" --stdin --rich --json
 slack-cli message send "#general" "fallback" \
   --blocks-file ./blocks.json --json
-slack-cli message update C123 1234567890.123 "revised" --rich --json
+slack-cli message update C123 1712345678.123456 "replacement" --rich --json
+slack-cli message update C123 1712345678.123456 "reply replacement" --thread 1712345000.100000 --rich --json
 ```
 
 `--rich` converts Markdown-style numbered and bulleted lists into Slack-native

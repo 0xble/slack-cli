@@ -631,13 +631,19 @@ func (c *Client) GetMessagePermalink(channelID, timestamp string) (string, error
 func (c *Client) GetMessageByTimestamp(channelID, timestamp, threadTS string) (*Message, error) {
 	var messages []Message
 	if strings.TrimSpace(threadTS) != "" {
-		resp, err := c.GetConversationReplies(RepliesParams{Channel: channelID, ThreadTS: threadTS, Limit: 100})
+		resp, err := c.GetConversationReplies(RepliesParams{
+			Channel: channelID, ThreadTS: threadTS, Limit: 100,
+			Oldest: timestamp, Latest: timestamp, Inclusive: true,
+		})
 		if err != nil {
 			return nil, err
 		}
 		messages = resp.Messages
 	} else {
-		resp, err := c.GetConversationHistory(HistoryParams{Channel: channelID, Limit: 100, Oldest: timestamp, Inclusive: true})
+		resp, err := c.GetConversationHistory(HistoryParams{
+			Channel: channelID, Limit: 100,
+			Oldest: timestamp, Latest: timestamp, Inclusive: true,
+		})
 		if err != nil {
 			return nil, err
 		}

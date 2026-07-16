@@ -21,7 +21,7 @@ func TestUserGroupMappingsForWorkspace(t *testing.T) {
 		CurrentWorkspace: "example.slack.com",
 		Workspaces: map[string]WorkspaceAuth{
 			"example.slack.com": {
-				UserGroups: map[string]string{"Team": "S123"},
+				UserGroups: map[string]string{" @Team ": "S123"},
 			},
 		},
 	}
@@ -30,7 +30,7 @@ func TestUserGroupMappingsForWorkspace(t *testing.T) {
 		t.Fatalf("expected normalized team mapping, got %+v", got)
 	}
 	got["team"] = "changed"
-	if cfg.Workspaces["example.slack.com"].UserGroups["Team"] != "S123" {
+	if cfg.Workspaces["example.slack.com"].UserGroups[" @Team "] != "S123" {
 		t.Fatal("expected defensive copy")
 	}
 }

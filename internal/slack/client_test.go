@@ -849,7 +849,7 @@ func TestGetMessageByTimestamp(t *testing.T) {
 	client := &Client{
 		userToken: "test-token",
 		httpClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
-			if req.URL.Path != "/api/conversations.history" || req.URL.Query().Get("oldest") != "200.2" || req.URL.Query().Get("inclusive") != "true" {
+			if req.URL.Path != "/api/conversations.history" || req.URL.Query().Get("oldest") != "200.2" || req.URL.Query().Get("latest") != "200.2" || req.URL.Query().Get("inclusive") != "true" {
 				t.Fatalf("unexpected request: %s?%s", req.URL.Path, req.URL.RawQuery)
 			}
 			return jsonResponse(req, `{"ok":true,"messages":[{"text":"other","ts":"300.3"},{"text":"target","ts":"200.2","blocks":[{"type":"rich_text","elements":[]}]}]}`)
@@ -868,7 +868,7 @@ func TestGetMessageByTimestampInThread(t *testing.T) {
 	client := &Client{
 		userToken: "test-token",
 		httpClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
-			if req.URL.Path != "/api/conversations.replies" || req.URL.Query().Get("ts") != "100.1" {
+			if req.URL.Path != "/api/conversations.replies" || req.URL.Query().Get("ts") != "100.1" || req.URL.Query().Get("oldest") != "200.2" || req.URL.Query().Get("latest") != "200.2" || req.URL.Query().Get("inclusive") != "true" {
 				t.Fatalf("unexpected request: %s?%s", req.URL.Path, req.URL.RawQuery)
 			}
 			return jsonResponse(req, `{"ok":true,"messages":[{"text":"root","ts":"100.1"},{"text":"reply","ts":"200.2","blocks":[{"type":"rich_text","elements":[]}]}]}`)

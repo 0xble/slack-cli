@@ -100,11 +100,39 @@ func (b *Block) UnmarshalJSON(data []byte) error {
 }
 
 func (b Block) MarshalJSON() ([]byte, error) {
-	if len(b.Raw) > 0 {
-		return b.Raw, nil
+	if len(b.Raw) == 0 {
+		type blockAlias Block
+		return json.Marshal(blockAlias(b))
 	}
-	type blockAlias Block
-	return json.Marshal(blockAlias(b))
+	var merged map[string]json.RawMessage
+	if err := json.Unmarshal(b.Raw, &merged); err != nil {
+		return nil, err
+	}
+	if merged == nil {
+		merged = map[string]json.RawMessage{}
+	}
+	for _, key := range []string{"type", "text", "image_url", "alt_text", "title", "elements"} {
+		delete(merged, key)
+	}
+	typed, err := json.Marshal(struct {
+		Type     string          `json:"type,omitempty"`
+		Text     *BlockText      `json:"text,omitempty"`
+		ImageURL string          `json:"image_url,omitempty"`
+		AltText  string          `json:"alt_text,omitempty"`
+		Title    *BlockText      `json:"title,omitempty"`
+		Elements json.RawMessage `json:"elements,omitempty"`
+	}{b.Type, b.Text, b.ImageURL, b.AltText, b.Title, b.Elements})
+	if err != nil {
+		return nil, err
+	}
+	var known map[string]json.RawMessage
+	if err := json.Unmarshal(typed, &known); err != nil {
+		return nil, err
+	}
+	for key, value := range known {
+		merged[key] = value
+	}
+	return json.Marshal(merged)
 }
 
 type BlockText struct {

@@ -39,6 +39,7 @@ type MessageSendCmd struct {
 type MessageUpdateCmd struct {
 	Channel     string `arg:"" help:"Channel name, channel ID, or DM ID"`
 	Timestamp   string `arg:"" help:"Timestamp of the message to update"`
+	Thread      string `help:"Parent thread timestamp when updating a reply"`
 	Text        string `arg:"" optional:"" help:"Replacement message text"`
 	Stdin       bool   `help:"Read replacement text from stdin"`
 	Rich        bool   `help:"Convert Markdown to native Slack rich text and lists"`
@@ -50,6 +51,9 @@ type MessageUpdateCmd struct {
 }
 
 func (c *MessageSendCmd) Run(ctx *Context) error {
+	if err := validateMessageInputSources(c.Rich, c.Stdin, c); err != nil {
+		return err
+	}
 	client, err := ctx.NewClient("")
 	if err != nil {
 		return err
@@ -70,12 +74,6 @@ func (c *MessageSendCmd) Run(ctx *Context) error {
 		return err
 	}
 
-	if c.Rich && c.hasBlockSource() {
-		return fmt.Errorf("cannot combine --rich with --blocks, --blocks-file, or --blocks-stdin")
-	}
-	if c.Stdin && c.BlocksStdin {
-		return fmt.Errorf("cannot read both message text and blocks from stdin")
-	}
 	if c.hasBlockSource() {
 		blocks, err := c.loadBlocks()
 		if err != nil {
@@ -94,13 +92,8 @@ func (c *MessageSendCmd) Run(ctx *Context) error {
 		if err != nil {
 			return c.augmentSendError(ctx, err)
 		}
-		if err := verifyRichMessageResponse(blocks, resp.Message.Blocks); err != nil {
-			return fmt.Errorf("message was sent at %s, but block verification failed: %w", resp.TS, err)
-		}
-		if err := verifyPersistedRichMessage(client, resp, c.Thread, blocks); err != nil {
-			return fmt.Errorf("message was sent at %s, but persisted block verification failed: %w", resp.TS, err)
-		}
-		return emitMessageWriteResult(client, "send", target, resp, true, c.JSON)
+		verified, warning := verifyMessageBlocksBestEffort(client, resp, c.Thread, blocks)
+		return emitMessageWriteResult(client, "send", target, resp, verified, warning, c.JSON)
 	}
 
 	if c.Rich {
@@ -125,13 +118,8 @@ func (c *MessageSendCmd) Run(ctx *Context) error {
 		if err != nil {
 			return c.augmentSendError(ctx, err)
 		}
-		if err := verifyRichMessageResponse(blocks, resp.Message.Blocks); err != nil {
-			return fmt.Errorf("message was sent at %s, but native formatting verification failed: %w", resp.TS, err)
-		}
-		if err := verifyPersistedRichMessage(client, resp, c.Thread, blocks); err != nil {
-			return fmt.Errorf("message was sent at %s, but persisted native formatting verification failed: %w", resp.TS, err)
-		}
-		return emitMessageWriteResult(client, "send", target, resp, true, c.JSON)
+		verified, warning := verifyMessageBlocksBestEffort(client, resp, c.Thread, blocks)
+		return emitMessageWriteResult(client, "send", target, resp, verified, warning, c.JSON)
 	}
 
 	if c.DryRun {
@@ -161,6 +149,9 @@ func (c *MessageUpdateCmd) Run(ctx *Context) error {
 		BlocksFile:  c.BlocksFile,
 		BlocksStdin: c.BlocksStdin,
 	}
+	if err := validateMessageInputSources(c.Rich, c.Stdin, content); err != nil {
+		return err
+	}
 	text, err := content.messageText()
 	if err != nil {
 		return err
@@ -171,12 +162,6 @@ func (c *MessageUpdateCmd) Run(ctx *Context) error {
 	target, err := slack.ResolveConversationTarget(client, c.Channel)
 	if err != nil {
 		return err
-	}
-	if c.Rich && content.hasBlockSource() {
-		return fmt.Errorf("cannot combine --rich with --blocks, --blocks-file, or --blocks-stdin")
-	}
-	if c.Stdin && c.BlocksStdin {
-		return fmt.Errorf("cannot read both message text and blocks from stdin")
 	}
 
 	var blocks json.RawMessage
@@ -208,20 +193,25 @@ func (c *MessageUpdateCmd) Run(ctx *Context) error {
 		return fmt.Errorf("failed to update message: %w", err)
 	}
 	verified := false
+	warning := ""
 	if hasStructuredBlocks {
-		if err := verifyRichMessageResponse(blocks, resp.Message.Blocks); err != nil {
-			return fmt.Errorf("message was updated at %s, but formatting verification failed: %w", resp.TS, err)
-		}
-		if err := verifyPersistedRichMessage(client, resp, "", blocks); err != nil {
-			return fmt.Errorf("message was updated at %s, but persisted formatting verification failed: %w", resp.TS, err)
-		}
-		verified = true
+		verified, warning = verifyMessageBlocksBestEffort(client, resp, c.Thread, blocks)
 	}
-	return emitMessageWriteResult(client, "update", target, resp, verified, c.JSON)
+	return emitMessageWriteResult(client, "update", target, resp, verified, warning, c.JSON)
 }
 
 func (c *MessageSendCmd) hasBlockSource() bool {
 	return strings.TrimSpace(c.Blocks) != "" || strings.TrimSpace(c.BlocksFile) != "" || c.BlocksStdin
+}
+
+func validateMessageInputSources(rich, stdin bool, content *MessageSendCmd) error {
+	if rich && content.hasBlockSource() {
+		return fmt.Errorf("cannot combine --rich with --blocks, --blocks-file, or --blocks-stdin")
+	}
+	if stdin && content.BlocksStdin {
+		return fmt.Errorf("cannot read both message text and blocks from stdin")
+	}
+	return nil
 }
 
 func (c *MessageSendCmd) loadBlocks() (json.RawMessage, error) {
@@ -245,16 +235,17 @@ func (c *MessageSendCmd) loadBlocks() (json.RawMessage, error) {
 	case strings.TrimSpace(c.Blocks) != "":
 		body = []byte(c.Blocks)
 	case strings.TrimSpace(c.BlocksFile) != "":
-		info, statErr := os.Stat(c.BlocksFile)
-		if statErr != nil {
-			return nil, fmt.Errorf("inspect blocks file: %w", statErr)
+		file, openErr := os.Open(c.BlocksFile)
+		if openErr != nil {
+			return nil, fmt.Errorf("open blocks file: %w", openErr)
 		}
-		if info.Size() > maxBlocksPayloadBytes {
-			return nil, fmt.Errorf("blocks payload exceeds %d bytes", maxBlocksPayloadBytes)
-		}
-		body, err = os.ReadFile(c.BlocksFile)
+		body, err = io.ReadAll(io.LimitReader(file, maxBlocksPayloadBytes+1))
+		closeErr := file.Close()
 		if err != nil {
 			return nil, fmt.Errorf("read blocks file: %w", err)
+		}
+		if closeErr != nil {
+			return nil, fmt.Errorf("close blocks file: %w", closeErr)
 		}
 	case c.BlocksStdin:
 		body, err = io.ReadAll(io.LimitReader(os.Stdin, maxBlocksPayloadBytes+1))
@@ -328,7 +319,7 @@ type messageWriteResult struct {
 	Warning   string        `json:"warning,omitempty"`
 }
 
-func emitMessageWriteResult(client *slack.Client, operation string, target *slack.ConversationTarget, resp *slack.PostMessageResponse, verified, jsonOutput bool) error {
+func emitMessageWriteResult(client *slack.Client, operation string, target *slack.ConversationTarget, resp *slack.PostMessageResponse, verified bool, warning string, jsonOutput bool) error {
 	result := messageWriteResult{
 		Operation: operation,
 		Channel:   resp.Channel,
@@ -336,10 +327,16 @@ func emitMessageWriteResult(client *slack.Client, operation string, target *slac
 		Text:      resp.Message.Text,
 		Blocks:    resp.Message.Blocks,
 		Verified:  verified,
+		Warning:   warning,
 	}
 	permalink, err := client.GetMessagePermalink(resp.Channel, resp.TS)
 	if err != nil {
-		result.Warning = "permalink lookup failed: " + err.Error()
+		permalinkWarning := "permalink lookup failed: " + err.Error()
+		if result.Warning == "" {
+			result.Warning = permalinkWarning
+		} else {
+			result.Warning += "; " + permalinkWarning
+		}
 	} else {
 		result.Permalink = permalink
 	}
@@ -376,6 +373,19 @@ func printMessagePayload(payload slack.ChatMessageRequest) error {
 	}
 	fmt.Println(string(body))
 	return nil
+}
+
+func verifyMessageBlocksBestEffort(client *slack.Client, resp *slack.PostMessageResponse, threadTS string, expected json.RawMessage) (bool, string) {
+	immediateErr := verifyRichMessageResponse(expected, resp.Message.Blocks)
+	persistedErr := verifyPersistedRichMessage(client, resp, threadTS, expected)
+	if persistedErr == nil {
+		return true, ""
+	}
+	parts := []string{"persisted block verification failed: " + persistedErr.Error()}
+	if immediateErr != nil {
+		parts = append(parts, "write response verification failed: "+immediateErr.Error())
+	}
+	return false, strings.Join(parts, "; ")
 }
 
 func verifyPersistedRichMessage(client *slack.Client, resp *slack.PostMessageResponse, threadTS string, expected json.RawMessage) error {

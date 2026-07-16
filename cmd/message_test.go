@@ -160,6 +160,15 @@ func TestMessageSendMessageText(t *testing.T) {
 	})
 }
 
+func TestValidateMessageInputSources(t *testing.T) {
+	if err := validateMessageInputSources(true, false, &MessageSendCmd{Blocks: `[{"type":"divider"}]`}); err == nil {
+		t.Fatal("expected --rich with explicit blocks to fail before reading input")
+	}
+	if err := validateMessageInputSources(false, true, &MessageSendCmd{BlocksStdin: true}); err == nil {
+		t.Fatal("expected message and blocks stdin conflict to fail before reading input")
+	}
+}
+
 func TestMessageSendRichCreatesNativeListAndResolvesUserGroup(t *testing.T) {
 	historyCalls := 0
 	userGroupCalls := 0
@@ -230,6 +239,40 @@ func TestMessageSendRichCreatesNativeListAndResolvesUserGroup(t *testing.T) {
 	}
 }
 
+func TestMessageSendVerificationFailureDoesNotReportSendFailure(t *testing.T) {
+	historyCalls := 0
+	ctx := testDMContext(func(req *http.Request) (*http.Response, error) {
+		switch req.URL.Path {
+		case "/api/chat.postMessage":
+			return dmJSONResponse(req, `{"ok":true,"channel":"D123","ts":"400.4","message":{"text":"fallback","ts":"400.4"}}`)
+		case "/api/conversations.history":
+			historyCalls++
+			return dmJSONResponse(req, `{"ok":true,"messages":[]}`)
+		case "/api/chat.getPermalink":
+			return dmJSONResponse(req, `{"ok":true,"channel":"D123","permalink":"https://example.slack.com/archives/D123/p4004"}`)
+		default:
+			return nil, fmt.Errorf("unexpected path %s", req.URL.Path)
+		}
+	})
+	output := captureStdout(t, func() {
+		err := (&MessageSendCmd{
+			Recipient: "D123",
+			Text:      "fallback",
+			Blocks:    `[{"type":"section","text":{"type":"mrkdwn","text":"hello"}}]`,
+			JSON:      true,
+		}).Run(ctx)
+		if err != nil {
+			t.Fatalf("successful Slack write must not become a command failure: %v", err)
+		}
+	})
+	if historyCalls != 3 {
+		t.Fatalf("expected three read-back attempts, got %d", historyCalls)
+	}
+	if !strings.Contains(output, `"ts": "400.4"`) || !strings.Contains(output, `"verified": false`) || !strings.Contains(output, `"warning":`) {
+		t.Fatalf("expected successful unverified result, got %s", output)
+	}
+}
+
 func TestMessageSendDryRunDoesNotPost(t *testing.T) {
 	ctx := testDMContext(func(req *http.Request) (*http.Response, error) {
 		return nil, fmt.Errorf("unexpected API request %s", req.URL.Path)
@@ -261,6 +304,16 @@ func TestMessageSendRejectsOversizedOrExcessiveBlocks(t *testing.T) {
 		_, err := (&MessageSendCmd{Blocks: "[" + strings.Repeat(" ", maxBlocksPayloadBytes)}).loadBlocks()
 		if err == nil || !strings.Contains(err.Error(), "exceeds") {
 			t.Fatalf("expected payload-size error, got %v", err)
+		}
+	})
+	t.Run("oversized file is read through a limit", func(t *testing.T) {
+		path := t.TempDir() + "/blocks.json"
+		if err := os.WriteFile(path, []byte("["+strings.Repeat(" ", maxBlocksPayloadBytes)), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		_, err := (&MessageSendCmd{BlocksFile: path}).loadBlocks()
+		if err == nil || !strings.Contains(err.Error(), "exceeds") {
+			t.Fatalf("expected file payload-size error, got %v", err)
 		}
 	})
 	t.Run("more than Slack message limit", func(t *testing.T) {
@@ -327,7 +380,10 @@ func TestMessageUpdateRichCreatesNativeList(t *testing.T) {
 				t.Fatalf("expected rich list: %s", payload["blocks"])
 			}
 			return dmJSONResponse(req, fmt.Sprintf(`{"ok":true,"channel":"D123","ts":"200.2","message":{"text":"updated","ts":"200.2","blocks":%s}}`, updatedBlocks))
-		case "/api/conversations.history":
+		case "/api/conversations.replies":
+			if req.URL.Query().Get("ts") != "100.1" || req.URL.Query().Get("oldest") != "200.2" || req.URL.Query().Get("latest") != "200.2" || req.URL.Query().Get("inclusive") != "true" {
+				t.Fatalf("unexpected threaded verification query: %s", req.URL.RawQuery)
+			}
 			return dmJSONResponse(req, fmt.Sprintf(`{"ok":true,"messages":[{"text":"updated","ts":"200.2","blocks":%s}]}`, updatedBlocks))
 		case "/api/chat.getPermalink":
 			return dmJSONResponse(req, `{"ok":true,"channel":"D123","permalink":"https://example.slack.com/archives/D123/p2002"}`)
@@ -336,7 +392,7 @@ func TestMessageUpdateRichCreatesNativeList(t *testing.T) {
 		}
 	})
 	output := captureStdout(t, func() {
-		err := (&MessageUpdateCmd{Channel: "D123", Timestamp: "200.2", Text: "1. First\n2. Second", Rich: true}).Run(ctx)
+		err := (&MessageUpdateCmd{Channel: "D123", Timestamp: "200.2", Thread: "100.1", Text: "1. First\n2. Second", Rich: true}).Run(ctx)
 		if err != nil {
 			t.Fatalf("MessageUpdateCmd.Run returned error: %v", err)
 		}

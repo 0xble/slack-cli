@@ -152,7 +152,7 @@ func (c *Config) UserGroupMappings(workspace string) map[string]string {
 	}
 	mappings := make(map[string]string, len(auth.UserGroups))
 	for handle, id := range auth.UserGroups {
-		handle = strings.ToLower(strings.TrimSpace(strings.TrimPrefix(handle, "@")))
+		handle = strings.TrimPrefix(strings.ToLower(strings.TrimSpace(handle)), "@")
 		id = strings.TrimSpace(id)
 		if handle != "" && id != "" {
 			mappings[handle] = id

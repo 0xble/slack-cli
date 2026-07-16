@@ -11,6 +11,7 @@ func TestBlockRoundTripPreservesUnknownFields(t *testing.T) {
 	if err := json.Unmarshal(raw, &block); err != nil {
 		t.Fatal(err)
 	}
+	block.Text.Text = "changed"
 	encoded, err := json.Marshal(block)
 	if err != nil {
 		t.Fatal(err)
@@ -19,8 +20,9 @@ func TestBlockRoundTripPreservesUnknownFields(t *testing.T) {
 	if err := json.Unmarshal(encoded, &got); err != nil {
 		t.Fatal(err)
 	}
-	if got["block_id"] != "b1" || got["accessory"] == nil {
-		t.Fatalf("expected unknown Block Kit fields to survive, got %s", encoded)
+	text, _ := got["text"].(map[string]any)
+	if got["block_id"] != "b1" || got["accessory"] == nil || text["text"] != "changed" {
+		t.Fatalf("expected typed mutation and unknown Block Kit fields to survive, got %s", encoded)
 	}
 }
 
