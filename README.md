@@ -76,9 +76,13 @@ slack-cli --workspace buildkite auth login
 
 `--workspace` accepts a full host (`buildkite.slack.com`), short host (`buildkite`), or team ID (`T123...`).
 
-OAuth app credentials and tokens are both stored per workspace in `~/.config/slack-cli/config.json`.
+OAuth app credentials and tokens are stored per workspace in the operating system's user config directory. On macOS this is `~/Library/Application Support/slack-cli/config.json`; on Linux it is normally `${XDG_CONFIG_HOME:-~/.config}/slack-cli/config.json`.
 
-Repeat `slack-cli auth login` for each workspace you want to access. Tokens are stored per workspace in the same XDG config file (`~/.config/slack-cli/config.json`).
+Repeat `slack-cli auth login` for each workspace you want to access. Optional workspace-scoped `user_groups` mappings let `--rich` resolve handles when the token does not have `usergroups:read`:
+
+```json
+{"workspaces":{"example.slack.com":{"user_groups":{"team":"S123..."}}}}
+```
 
 ### Environment Variables (optional)
 
@@ -111,14 +115,27 @@ slack-cli channel read <url> --markdown # Read by URL as markdown
 slack-cli channel info "#general"       # Show channel details
 ```
 
-### Direct messages
+### Messages and direct messages
 
 ```bash
-slack-cli dm list                 # List direct messages
-slack-cli dm read @alice          # Read a direct message
-slack-cli message send @alice "hello"    # Send a direct message
-slack-cli message send #general "hello"  # Send to a channel
+slack-cli dm list                              # List direct messages
+slack-cli dm read @alice                       # Read a direct message
+slack-cli message send @alice "hello"           # Send a direct message
+slack-cli message send "#general" "hello"       # Send to a channel
+printf 'Questions:\n\n1. First\n2. Second' \
+  | slack-cli message send "#general" --stdin --rich --json
+slack-cli message send "#general" "fallback" \
+  --blocks-file ./blocks.json --json
+slack-cli message update C123 1712345678.123456 "replacement" --rich --json
+slack-cli message update C123 1712345678.123456 "reply replacement" --thread 1712345000.100000 --rich --json
 ```
+
+`--rich` converts Markdown-style numbered and bulleted lists into Slack-native
+`rich_text_list` blocks. Use `--dry-run` to inspect the exact payload before
+sending. Exact Block Kit arrays can be supplied with `--blocks`,
+`--blocks-file`, or `--blocks-stdin`. Rich and Block Kit writes are read back
+from Slack for verification, and `--json` includes the permalink and persisted
+blocks.
 
 ### Files
 

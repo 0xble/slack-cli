@@ -107,8 +107,8 @@ func TestFileInfoCmdJSON(t *testing.T) {
 	if got.Name != "a.png" || got.Size != 123 || got.Permalink == "" {
 		t.Fatalf("unexpected file: %+v", got)
 	}
-	if got.Created == "" {
-		t.Fatalf("expected created timestamp, got empty")
+	if got.Created == 0 {
+		t.Fatalf("expected created timestamp, got zero")
 	}
 }
 

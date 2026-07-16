@@ -5,6 +5,27 @@ import (
 	"testing"
 )
 
+func TestBlockRoundTripPreservesUnknownFields(t *testing.T) {
+	raw := []byte(`{"type":"section","block_id":"b1","text":{"type":"mrkdwn","text":"hello"},"accessory":{"type":"button","action_id":"a1"}}`)
+	var block Block
+	if err := json.Unmarshal(raw, &block); err != nil {
+		t.Fatal(err)
+	}
+	block.Text.Text = "changed"
+	encoded, err := json.Marshal(block)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(encoded, &got); err != nil {
+		t.Fatal(err)
+	}
+	text, _ := got["text"].(map[string]any)
+	if got["block_id"] != "b1" || got["accessory"] == nil || text["text"] != "changed" {
+		t.Fatalf("expected typed mutation and unknown Block Kit fields to survive, got %s", encoded)
+	}
+}
+
 func TestHistoryResponse_MessageChannelSupportsStringOrObject(t *testing.T) {
 	t.Run("channel as string", func(t *testing.T) {
 		raw := []byte(`{

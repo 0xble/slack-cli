@@ -96,13 +96,3 @@ func TestResolveDMTarget(t *testing.T) {
 		}
 	})
 }
-
-func jsonResponse(req *http.Request, body string) (*http.Response, error) {
-	return &http.Response{
-		StatusCode: http.StatusOK,
-		Status:     "200 OK",
-		Header:     http.Header{"Content-Type": []string{"application/json"}},
-		Body:       io.NopCloser(strings.NewReader(body)),
-		Request:    req,
-	}, nil
-}
