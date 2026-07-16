@@ -79,11 +79,32 @@ type Attachment struct {
 }
 
 type Block struct {
-	Type     string     `json:"type"`
-	Text     *BlockText `json:"text,omitempty"`
-	ImageURL string     `json:"image_url,omitempty"`
-	AltText  string     `json:"alt_text,omitempty"`
-	Title    *BlockText `json:"title,omitempty"`
+	Type     string          `json:"type"`
+	Text     *BlockText      `json:"text,omitempty"`
+	ImageURL string          `json:"image_url,omitempty"`
+	AltText  string          `json:"alt_text,omitempty"`
+	Title    *BlockText      `json:"title,omitempty"`
+	Elements json.RawMessage `json:"elements,omitempty"`
+	Raw      json.RawMessage `json:"-"`
+}
+
+func (b *Block) UnmarshalJSON(data []byte) error {
+	type blockAlias Block
+	var decoded blockAlias
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	decoded.Raw = append(json.RawMessage(nil), data...)
+	*b = Block(decoded)
+	return nil
+}
+
+func (b Block) MarshalJSON() ([]byte, error) {
+	if len(b.Raw) > 0 {
+		return b.Raw, nil
+	}
+	type blockAlias Block
+	return json.Marshal(blockAlias(b))
 }
 
 type BlockText struct {
@@ -167,6 +188,14 @@ type PostMessageResponse struct {
 	Channel string  `json:"channel"`
 	TS      string  `json:"ts"`
 	Message Message `json:"message"`
+}
+
+type ChatMessageRequest struct {
+	Channel  string          `json:"channel"`
+	Text     string          `json:"text"`
+	ThreadTS string          `json:"thread_ts,omitempty"`
+	TS       string          `json:"ts,omitempty"`
+	Blocks   json.RawMessage `json:"blocks,omitempty"`
 }
 
 type ReactionResponse struct {

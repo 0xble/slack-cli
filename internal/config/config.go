@@ -9,12 +9,13 @@ import (
 )
 
 type WorkspaceAuth struct {
-	Token        string `json:"token,omitempty"`
-	ClientID     string `json:"client_id,omitempty"`
-	ClientSecret string `json:"client_secret,omitempty"`
-	Team         string `json:"team,omitempty"`
-	TeamID       string `json:"team_id,omitempty"`
-	URL          string `json:"url,omitempty"`
+	Token        string            `json:"token,omitempty"`
+	ClientID     string            `json:"client_id,omitempty"`
+	ClientSecret string            `json:"client_secret,omitempty"`
+	Team         string            `json:"team,omitempty"`
+	TeamID       string            `json:"team_id,omitempty"`
+	URL          string            `json:"url,omitempty"`
+	UserGroups   map[string]string `json:"user_groups,omitempty"`
 }
 
 type Config struct {
@@ -137,6 +138,40 @@ func (c *Config) ResolveWorkspace(workspace string) (string, error) {
 	return resolved, nil
 }
 
+func (c *Config) UserGroupMappings(workspace string) map[string]string {
+	if c == nil {
+		return nil
+	}
+	key, err := c.ResolveWorkspace(workspace)
+	if err != nil {
+		return nil
+	}
+	auth, ok := c.Workspaces[key]
+	if !ok || len(auth.UserGroups) == 0 {
+		return nil
+	}
+	mappings := make(map[string]string, len(auth.UserGroups))
+	for handle, id := range auth.UserGroups {
+		handle = strings.ToLower(strings.TrimSpace(strings.TrimPrefix(handle, "@")))
+		id = strings.TrimSpace(id)
+		if handle != "" && id != "" {
+			mappings[handle] = id
+		}
+	}
+	return mappings
+}
+
+func cloneStringMap(source map[string]string) map[string]string {
+	if len(source) == 0 {
+		return nil
+	}
+	cloned := make(map[string]string, len(source))
+	for key, value := range source {
+		cloned[key] = value
+	}
+	return cloned
+}
+
 func (c *Config) SetWorkspaceAuth(workspace string, auth WorkspaceAuth) {
 	workspace = c.workspaceKeyOrInput(workspace)
 	if workspace == "" {
@@ -145,6 +180,9 @@ func (c *Config) SetWorkspaceAuth(workspace string, auth WorkspaceAuth) {
 
 	if c.Workspaces == nil {
 		c.Workspaces = map[string]WorkspaceAuth{}
+	}
+	if len(auth.UserGroups) == 0 {
+		auth.UserGroups = cloneStringMap(c.Workspaces[workspace].UserGroups)
 	}
 
 	c.Workspaces[workspace] = auth

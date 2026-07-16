@@ -1,6 +1,7 @@
 package slack
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -67,6 +68,46 @@ func (c *Client) request(method string, params url.Values) ([]byte, error) {
 
 func (c *Client) requestPost(method string, params url.Values) ([]byte, error) {
 	return c.requestWithMethod(http.MethodPost, method, params)
+}
+
+func (c *Client) requestPostJSON(method string, payload any) ([]byte, error) {
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode %s request: %w", method, err)
+	}
+
+	req, err := http.NewRequest(http.MethodPost, slackAPIBase+"/"+method, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+c.userToken)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close() //nolint:errcheck
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("slack API returned HTTP %d: %s", resp.StatusCode, resp.Status)
+	}
+
+	responseBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+	var slackResp struct {
+		OK    bool   `json:"ok"`
+		Error string `json:"error"`
+	}
+	if err := json.Unmarshal(responseBody, &slackResp); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+	if !slackResp.OK {
+		return nil, &APIError{Method: method, Code: slackResp.Error}
+	}
+	return responseBody, nil
 }
 
 func (c *Client) requestWithMethod(httpMethod, method string, params url.Values) ([]byte, error) {
@@ -543,6 +584,71 @@ func (c *Client) PostMessage(channelID, text, threadTS string, mrkdwn bool) (*Po
 	}
 
 	return &result, nil
+}
+
+func (c *Client) PostMessageWithBlocks(payload ChatMessageRequest) (*PostMessageResponse, error) {
+	body, err := c.requestPostJSON("chat.postMessage", payload)
+	if err != nil {
+		return nil, err
+	}
+
+	var result PostMessageResponse
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("failed to parse chat.postMessage response: %w", err)
+	}
+	return &result, nil
+}
+
+func (c *Client) UpdateMessageWithBlocks(payload ChatMessageRequest) (*PostMessageResponse, error) {
+	body, err := c.requestPostJSON("chat.update", payload)
+	if err != nil {
+		return nil, err
+	}
+	var result PostMessageResponse
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("failed to parse chat.update response: %w", err)
+	}
+	return &result, nil
+}
+
+func (c *Client) GetMessagePermalink(channelID, timestamp string) (string, error) {
+	params := url.Values{}
+	params.Set("channel", channelID)
+	params.Set("message_ts", timestamp)
+	body, err := c.request("chat.getPermalink", params)
+	if err != nil {
+		return "", err
+	}
+	var result struct {
+		Permalink string `json:"permalink"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return "", fmt.Errorf("failed to parse chat.getPermalink response: %w", err)
+	}
+	return result.Permalink, nil
+}
+
+func (c *Client) GetMessageByTimestamp(channelID, timestamp, threadTS string) (*Message, error) {
+	var messages []Message
+	if strings.TrimSpace(threadTS) != "" {
+		resp, err := c.GetConversationReplies(RepliesParams{Channel: channelID, ThreadTS: threadTS, Limit: 100})
+		if err != nil {
+			return nil, err
+		}
+		messages = resp.Messages
+	} else {
+		resp, err := c.GetConversationHistory(HistoryParams{Channel: channelID, Limit: 100, Oldest: timestamp, Inclusive: true})
+		if err != nil {
+			return nil, err
+		}
+		messages = resp.Messages
+	}
+	for i := range messages {
+		if messages[i].TS == timestamp {
+			return &messages[i], nil
+		}
+	}
+	return nil, fmt.Errorf("message %s was not returned by Slack", timestamp)
 }
 
 func (c *Client) GetUploadURLExternal(filename string, length int64) (*GetUploadURLExternalResponse, error) {

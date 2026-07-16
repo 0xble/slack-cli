@@ -1,6 +1,7 @@
 package slack
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -752,4 +753,155 @@ type roundTripFunc func(req *http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return f(req)
+}
+
+func TestPostMessageWithBlocksUsesJSON(t *testing.T) {
+	client := &Client{
+		userToken: "test-token",
+		httpClient: &http.Client{
+			Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				if req.URL.Path != "/api/chat.postMessage" {
+					t.Fatalf("expected chat.postMessage, got %s", req.URL.Path)
+				}
+				if got := req.Header.Get("Content-Type"); got != "application/json" {
+					t.Fatalf("expected application/json, got %q", got)
+				}
+				var payload ChatMessageRequest
+				if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+					t.Fatalf("decode request: %v", err)
+				}
+				if payload.Channel != "C123" || payload.Text != "fallback" || payload.ThreadTS != "100.1" {
+					t.Fatalf("unexpected payload: %+v", payload)
+				}
+				var blocks []map[string]any
+				if err := json.Unmarshal(payload.Blocks, &blocks); err != nil {
+					t.Fatalf("decode blocks: %v", err)
+				}
+				if len(blocks) != 1 || blocks[0]["type"] != "rich_text" {
+					t.Fatalf("unexpected blocks: %+v", blocks)
+				}
+				return jsonResponse(req, `{"ok":true,"channel":"C123","ts":"200.2","message":{"text":"fallback","ts":"200.2","blocks":[{"type":"rich_text","elements":[]}]}}`)
+			}),
+		},
+	}
+
+	blocks := json.RawMessage(`[{"type":"rich_text","elements":[]}]`)
+	resp, err := client.PostMessageWithBlocks(ChatMessageRequest{
+		Channel:  "C123",
+		Text:     "fallback",
+		ThreadTS: "100.1",
+		Blocks:   blocks,
+	})
+	if err != nil {
+		t.Fatalf("PostMessageWithBlocks returned error: %v", err)
+	}
+	if resp.TS != "200.2" || len(resp.Message.Blocks) != 1 {
+		t.Fatalf("unexpected response: %+v", resp)
+	}
+}
+
+func TestUpdateMessageWithBlocksUsesJSON(t *testing.T) {
+	client := &Client{
+		userToken: "test-token",
+		httpClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			if req.URL.Path != "/api/chat.update" || req.Header.Get("Content-Type") != "application/json" {
+				t.Fatalf("unexpected request: %s %s", req.URL.Path, req.Header.Get("Content-Type"))
+			}
+			var payload ChatMessageRequest
+			if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+				t.Fatalf("decode request: %v", err)
+			}
+			if payload.Channel != "C123" || payload.TS != "200.2" || len(payload.Blocks) == 0 {
+				t.Fatalf("unexpected payload: %+v", payload)
+			}
+			return jsonResponse(req, `{"ok":true,"channel":"C123","ts":"200.2","message":{"text":"updated","ts":"200.2","blocks":[{"type":"rich_text","elements":[]}]}}`)
+		})},
+	}
+	resp, err := client.UpdateMessageWithBlocks(ChatMessageRequest{Channel: "C123", TS: "200.2", Text: "updated", Blocks: json.RawMessage(`[{"type":"rich_text","elements":[]}]`)})
+	if err != nil {
+		t.Fatalf("UpdateMessageWithBlocks returned error: %v", err)
+	}
+	if resp.TS != "200.2" {
+		t.Fatalf("unexpected response: %+v", resp)
+	}
+}
+
+func TestGetMessagePermalink(t *testing.T) {
+	client := &Client{
+		userToken: "test-token",
+		httpClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			if req.URL.Path != "/api/chat.getPermalink" || req.URL.Query().Get("channel") != "C123" || req.URL.Query().Get("message_ts") != "200.2" {
+				t.Fatalf("unexpected request: %s?%s", req.URL.Path, req.URL.RawQuery)
+			}
+			return jsonResponse(req, `{"ok":true,"channel":"C123","permalink":"https://example.slack.com/archives/C123/p2002"}`)
+		})},
+	}
+	permalink, err := client.GetMessagePermalink("C123", "200.2")
+	if err != nil {
+		t.Fatalf("GetMessagePermalink returned error: %v", err)
+	}
+	if permalink != "https://example.slack.com/archives/C123/p2002" {
+		t.Fatalf("unexpected permalink %q", permalink)
+	}
+}
+
+func TestGetMessageByTimestamp(t *testing.T) {
+	client := &Client{
+		userToken: "test-token",
+		httpClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			if req.URL.Path != "/api/conversations.history" || req.URL.Query().Get("oldest") != "200.2" || req.URL.Query().Get("inclusive") != "true" {
+				t.Fatalf("unexpected request: %s?%s", req.URL.Path, req.URL.RawQuery)
+			}
+			return jsonResponse(req, `{"ok":true,"messages":[{"text":"other","ts":"300.3"},{"text":"target","ts":"200.2","blocks":[{"type":"rich_text","elements":[]}]}]}`)
+		})},
+	}
+	message, err := client.GetMessageByTimestamp("C123", "200.2", "")
+	if err != nil {
+		t.Fatalf("GetMessageByTimestamp returned error: %v", err)
+	}
+	if message.Text != "target" || len(message.Blocks) != 1 {
+		t.Fatalf("unexpected message: %+v", message)
+	}
+}
+
+func TestGetMessageByTimestampInThread(t *testing.T) {
+	client := &Client{
+		userToken: "test-token",
+		httpClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			if req.URL.Path != "/api/conversations.replies" || req.URL.Query().Get("ts") != "100.1" {
+				t.Fatalf("unexpected request: %s?%s", req.URL.Path, req.URL.RawQuery)
+			}
+			return jsonResponse(req, `{"ok":true,"messages":[{"text":"root","ts":"100.1"},{"text":"reply","ts":"200.2","blocks":[{"type":"rich_text","elements":[]}]}]}`)
+		})},
+	}
+	message, err := client.GetMessageByTimestamp("C123", "200.2", "100.1")
+	if err != nil {
+		t.Fatalf("GetMessageByTimestamp returned error: %v", err)
+	}
+	if message.Text != "reply" || len(message.Blocks) != 1 {
+		t.Fatalf("unexpected message: %+v", message)
+	}
+}
+
+func TestResolveUserGroupMentions(t *testing.T) {
+	client := &Client{
+		userToken: "test-token",
+		httpClient: &http.Client{
+			Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				if req.URL.Path != "/api/usergroups.list" {
+					t.Fatalf("expected usergroups.list, got %s", req.URL.Path)
+				}
+				return jsonResponse(req, `{"ok":true,"usergroups":[{"id":"S123","handle":"team","name":"Team"}]}`)
+			}),
+		},
+	}
+
+	got, err := client.ResolveUserGroupMentions("Hey @team, ask @unknown. Email a@team.com")
+	if err != nil {
+		t.Fatalf("ResolveUserGroupMentions returned error: %v", err)
+	}
+	want := "Hey <!subteam^S123>, ask @unknown. Email a@team.com"
+	if got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
 }
